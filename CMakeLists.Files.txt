@@ -1,0 +1,46 @@
+cmake_minimum_required(VERSION 3.8)
+
+#project(beGAN)
+
+include_directories(C:/dlib)
+include_directories(C:/mxnet/bin/include)
+
+set(SOURCES ${SOURCES}
+	src/TData.cpp
+	src/TDataset.cpp
+	src/TFacesDataset.cpp
+	src/main.cpp
+)
+
+set(HEADERS ${HEADERS}
+	C:/dlib/dlib/all/source.cpp
+	C:/mxnet/bin/include/mxnet-cpp/MxNetCpp.h
+	src/resnet_mx.h
+	src/TMnistDataset.h
+	src/TMxDNNTrainer.h
+	src/CommonDefinitions.h
+	src/TRandomInt.h
+	src/TData.h
+	src/TIndexedObjects.h
+	src/TDataset.h
+	src/TFacesDataset.h
+)
+
+set(LIBS ${LIBS}
+	${OpenCV_LIBS}
+	C:/cuda/lib/x64/cudart_static.lib
+	C:/cuda/lib/x64/cublas.lib
+	C:/cuda/lib/x64/cudnn.lib
+	C:/cuda/lib/x64/curand.lib
+	C:/cuda/lib/x64/cusolver.lib
+	C:/dlib/examples/build/dlib_build/Release/dlib19.19.0_release_64bit_msvc1925.lib
+	C:/mxnet/bin/lib/libmxnet.lib
+	#C:/mxnet/build/Debug/libmxnet.lib
+)
+
+if(MSVC_IDE)
+	source_group("src" FILES ${Files_src})
+
+	source_group("" FILES CMakeLists.Files.txt)
+endif()
+
