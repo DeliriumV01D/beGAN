@@ -11,7 +11,7 @@
 
 const std::string LABEL_FILE_NAME = "label.txt";
 
-//Формируем вектор путей файлов изображений и соответствующих им меток
+//Р¤РѕСЂРјРёСЂСѓРµРј РІРµРєС‚РѕСЂ РїСѓС‚РµР№ С„Р°Р№Р»РѕРІ РёР·РѕР±СЂР°Р¶РµРЅРёР№ Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёС… РёРј РјРµС‚РѕРє
 TDataset :: TDataset(const TDatasetProperties &dataset_properties)
 {
 	DatasetProperties = dataset_properties;
@@ -46,7 +46,7 @@ TDataset :: ~TDataset()
 	}
 }
 
-//Работаем в предположении, что все изображения одного объекта лежат в одном подкаталоге
+//Р Р°Р±РѕС‚Р°РµРј РІ РїСЂРµРґРїРѕР»РѕР¶РµРЅРёРё, С‡С‚Рѕ РІСЃРµ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ РѕРґРЅРѕРіРѕ РѕР±СЉРµРєС‚Р° Р»РµР¶Р°С‚ РІ РѕРґРЅРѕРј РїРѕРґРєР°С‚Р°Р»РѕРіРµ
 std::string TDataset :: GetLabelFromPath(const std::string &path)
 {
 	std::string s;
@@ -66,13 +66,13 @@ unsigned long TDataset :: ClassNumber()
 	return Labels.Size();
 }
 
-//Получить объект из выборки по индексу
+//РџРѕР»СѓС‡РёС‚СЊ РѕР±СЉРµРєС‚ РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 cv::Mat TDataset :: GetSampleCVMat(const unsigned long sample_idx)
 {
 	if (sample_idx < 0 || sample_idx >= this->Size()) throw TException("Error TDataset :: GetSample: sample index is incorrect");
 
 	cv::Mat result;
-	//Читаем исходную картинку
+	//Р§РёС‚Р°РµРј РёСЃС…РѕРґРЅСѓСЋ РєР°СЂС‚РёРЅРєСѓ
 	bool lock = DatasetProperties.UseMultiThreading && DatasetProperties.OneThreadReading;
 	if (lock) ReadMutex.lock();
 	try {
@@ -103,37 +103,37 @@ cv::Mat TDataset :: GetSampleCVMat(const unsigned long sample_idx)
 	return result;
 }
 
-//Получить объект из выборки по индексу
+//РџРѕР»СѓС‡РёС‚СЊ РѕР±СЉРµРєС‚ РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 dlib::matrix<unsigned char> TDataset :: GetSampleDLibMatrix(const unsigned long sample_idx)
 {
 	dlib::matrix<unsigned char> temp, 
 															result(DatasetProperties.ImgSize.height, DatasetProperties.ImgSize.width);
 	cv::Mat gray_img_buf = GetSampleCVMat(sample_idx);
-	//Преобразуем ее в dlib::matrix
+	//РџСЂРµРѕР±СЂР°Р·СѓРµРј РµРµ РІ dlib::matrix
 	CVMatToDlibMatrix8U(gray_img_buf, temp);
 	resize_image(temp, result);
 	return result;
 }
 
-//Получить метку по индексу объекта
+//РџРѕР»СѓС‡РёС‚СЊ РјРµС‚РєСѓ РїРѕ РёРЅРґРµРєСЃСѓ РѕР±СЉРµРєС‚Р°
 std::string TDataset :: GetLabel(const unsigned long sample_idx)
 {
 	return GetLabelByIdx(LabeledSamplePaths[sample_idx].Label);
 }
 
-///Получить метку по индексу метки
+///РџРѕР»СѓС‡РёС‚СЊ РјРµС‚РєСѓ РїРѕ РёРЅРґРµРєСЃСѓ РјРµС‚РєРё
 std::string TDataset :: GetLabelByIdx(const unsigned long label_idx)
 {
 	return Labels.GetObjByIdx(label_idx);
 }
 
-//Получить индекс метки из выборки по индексу
+//РџРѕР»СѓС‡РёС‚СЊ РёРЅРґРµРєСЃ РјРµС‚РєРё РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 unsigned long TDataset :: GetLabelIdx(const unsigned long sample_idx)
 {
 	return LabeledSamplePaths[sample_idx].Label;
 }
 
-//Сформировать вход нейросетки по двум изображениям(одинакового размера!)
+//РЎС„РѕСЂРјРёСЂРѕРІР°С‚СЊ РІС…РѕРґ РЅРµР№СЂРѕСЃРµС‚РєРё РїРѕ РґРІСѓРј РёР·РѕР±СЂР°Р¶РµРЅРёСЏРј(РѕРґРёРЅР°РєРѕРІРѕРіРѕ СЂР°Р·РјРµСЂР°!)
 dlib::matrix<unsigned char> TDataset :: MakeInputSamplePair(dlib::matrix<unsigned char> * img1, dlib::matrix<unsigned char> * img2)
 {
 	dlib::matrix<unsigned char> result;
@@ -143,7 +143,7 @@ dlib::matrix<unsigned char> TDataset :: MakeInputSamplePair(dlib::matrix<unsigne
 	return result;
 }
 
-///Получить пару изображений positive == true одного объекта, false - разных объектов и соответствующую метку
+///РџРѕР»СѓС‡РёС‚СЊ РїР°СЂСѓ РёР·РѕР±СЂР°Р¶РµРЅРёР№ positive == true РѕРґРЅРѕРіРѕ РѕР±СЉРµРєС‚Р°, false - СЂР°Р·РЅС‹С… РѕР±СЉРµРєС‚РѕРІ Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰СѓСЋ РјРµС‚РєСѓ
 void TDataset :: GetInputSamplePair(bool positive, dlib::matrix<unsigned char> &sample_pair, unsigned long &label)
 {
 	unsigned long idx, jdx;
@@ -154,9 +154,9 @@ void TDataset :: GetInputSamplePair(bool positive, dlib::matrix<unsigned char> &
 	bool found = false;
 	
 	do {
-		//Берем случайный индекс
+		//Р‘РµСЂРµРј СЃР»СѓС‡Р°Р№РЅС‹Р№ РёРЅРґРµРєСЃ
 		idx = RandomInt() % this->Size();
-		if (positive){ //если positive, то ищем в окрестности, пока не будет совпадения label
+		if (positive){ //РµСЃР»Рё positive, С‚Рѕ РёС‰РµРј РІ РѕРєСЂРµСЃС‚РЅРѕСЃС‚Рё, РїРѕРєР° РЅРµ Р±СѓРґРµС‚ СЃРѕРІРїР°РґРµРЅРёСЏ label
 			for (unsigned long i = 0; i < attempts; i++)
 			{
 				jdx = idx - locality/2 + RandomInt() % locality;
@@ -168,7 +168,7 @@ void TDataset :: GetInputSamplePair(bool positive, dlib::matrix<unsigned char> &
 				};
 			}
 		} else {//if positive
-			//Если negative, то просто повторяем поиск случайного индекса, пока не наткнемся на label, отличающийся
+			//Р•СЃР»Рё negative, С‚Рѕ РїСЂРѕСЃС‚Рѕ РїРѕРІС‚РѕСЂСЏРµРј РїРѕРёСЃРє СЃР»СѓС‡Р°Р№РЅРѕРіРѕ РёРЅРґРµРєСЃР°, РїРѕРєР° РЅРµ РЅР°С‚РєРЅРµРјСЃСЏ РЅР° label, РѕС‚Р»РёС‡Р°СЋС‰РёР№СЃСЏ
 			for (unsigned long i = 0; i < attempts; i++)
 			{
 				jdx = RandomInt() % this->Size();
@@ -221,7 +221,7 @@ struct TR {
 	unsigned long Label;
 };
 
-//Получить пакет пар изображений и соответвующие метки
+//РџРѕР»СѓС‡РёС‚СЊ РїР°РєРµС‚ РїР°СЂ РёР·РѕР±СЂР°Р¶РµРЅРёР№ Рё СЃРѕРѕС‚РІРµС‚РІСѓСЋС‰РёРµ РјРµС‚РєРё
 void TDataset :: GetInputSamplePairBatch(
 	std::vector<dlib::matrix<unsigned char>> &batch_sample_pairs, 
 	std::vector<unsigned long> &batch_labels,
@@ -241,11 +241,11 @@ void TDataset :: GetInputSamplePairBatch(
 		{
 			trv.push_back(TR() = {this, positive});
 	    fv[i] = trv[i];
-			//Можно, конечно же обойтись и без всяких лямбд
+			//РњРѕР¶РЅРѕ, РєРѕРЅРµС‡РЅРѕ Р¶Рµ РѕР±РѕР№С‚РёСЃСЊ Рё Р±РµР· РІСЃСЏРєРёС… Р»СЏРјР±Рґ
 			ThreadPool->add_task_by_value([](TR &val){val.Dataset->GetInputSamplePair(val.Positive, val.SamplePair, val.Label);}, fv[i]);
-			positive = !positive;	//Чередуем положительные и отрицательные примеры
+			positive = !positive;	//Р§РµСЂРµРґСѓРµРј РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рµ Рё РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Рµ РїСЂРёРјРµСЂС‹
 		};
-		//Каждому потоку нужен свой экземпляр детектора, потому что может быть разного размера и тд.
+		//РљР°Р¶РґРѕРјСѓ РїРѕС‚РѕРєСѓ РЅСѓР¶РµРЅ СЃРІРѕР№ СЌРєР·РµРјРїР»СЏСЂ РґРµС‚РµРєС‚РѕСЂР°, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РјРѕР¶РµС‚ Р±С‹С‚СЊ СЂР°Р·РЅРѕРіРѕ СЂР°Р·РјРµСЂР° Рё С‚Рґ.
 		ThreadPool->wait_for_all_tasks();
 		for (unsigned long i = 0; i < batch_size; i++)
 		{
@@ -260,12 +260,12 @@ void TDataset :: GetInputSamplePairBatch(
 			GetInputSamplePair(positive, sample_pair, label);
 			batch_sample_pairs.push_back(sample_pair);
 			batch_labels.push_back(label);
-			positive = !positive;	//Чередуем положительные и отрицательные примеры
+			positive = !positive;	//Р§РµСЂРµРґСѓРµРј РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рµ Рё РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Рµ РїСЂРёРјРµСЂС‹
 		};
 	}
 }
 
-//Случайный объект из датасета и соответствующая ему метка
+//РЎР»СѓС‡Р°Р№РЅС‹Р№ РѕР±СЉРµРєС‚ РёР· РґР°С‚Р°СЃРµС‚Р° Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰Р°СЏ РµРјСѓ РјРµС‚РєР°
 void TDataset :: GetRandomSample(dlib::matrix<unsigned char> &sample, unsigned long &label)
 {
 	unsigned long idx;
@@ -273,7 +273,7 @@ void TDataset :: GetRandomSample(dlib::matrix<unsigned char> &sample, unsigned l
 	bool found = false;
 	
 	do {
-		//Берем случайный индекс
+		//Р‘РµСЂРµРј СЃР»СѓС‡Р°Р№РЅС‹Р№ РёРЅРґРµРєСЃ
 		idx = RandomInt() % this->Size();
 		try {
 			sample = GetSampleDLibMatrix(idx);
@@ -290,7 +290,7 @@ void TDataset :: GetRandomSample(dlib::matrix<unsigned char> &sample, unsigned l
 	} while (!found);
 }
 
-//Случайный объект из датасета и соответствующая ему метка
+//РЎР»СѓС‡Р°Р№РЅС‹Р№ РѕР±СЉРµРєС‚ РёР· РґР°С‚Р°СЃРµС‚Р° Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰Р°СЏ РµРјСѓ РјРµС‚РєР°
 void TDataset :: GetRandomSample(cv::Mat &sample, unsigned long &label)
 {
 	unsigned long idx;
@@ -298,7 +298,7 @@ void TDataset :: GetRandomSample(cv::Mat &sample, unsigned long &label)
 	bool found = false;
 	
 	do {
-		//Берем случайный индекс
+		//Р‘РµСЂРµРј СЃР»СѓС‡Р°Р№РЅС‹Р№ РёРЅРґРµРєСЃ
 		idx = RandomInt() % this->Size();
 		try {
 			sample = GetSampleCVMat(idx);
@@ -311,7 +311,7 @@ void TDataset :: GetRandomSample(cv::Mat &sample, unsigned long &label)
 }
 
 
-//Получить пакет изображений и соответствующие им метки  cv::Mat - dlib::matrix переписать через шаблон?
+//РџРѕР»СѓС‡РёС‚СЊ РїР°РєРµС‚ РёР·РѕР±СЂР°Р¶РµРЅРёР№ Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёРµ РёРј РјРµС‚РєРё  cv::Mat - dlib::matrix РїРµСЂРµРїРёСЃР°С‚СЊ С‡РµСЂРµР· С€Р°Р±Р»РѕРЅ?
 void TDataset :: GetRandomSampleBatch(
 	std::vector<dlib::matrix<unsigned char>> &batch_samples, 
 	std::vector<unsigned long> &batch_labels,
@@ -338,7 +338,7 @@ void TDataset :: GetRandomSampleBatch(
 	    fv[i] = tsv[i];
 			ThreadPool->add_task_by_value([](TS &val){val.Dataset->GetRandomSample(val.Sample, val.Label);}, fv[i]);
 		};
-		//Каждому потоку нужен свой экземпляр детектора, потому что может быть разного размера и тд.
+		//РљР°Р¶РґРѕРјСѓ РїРѕС‚РѕРєСѓ РЅСѓР¶РµРЅ СЃРІРѕР№ СЌРєР·РµРјРїР»СЏСЂ РґРµС‚РµРєС‚РѕСЂР°, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РјРѕР¶РµС‚ Р±С‹С‚СЊ СЂР°Р·РЅРѕРіРѕ СЂР°Р·РјРµСЂР° Рё С‚Рґ.
 		ThreadPool->wait_for_all_tasks();
 		for (unsigned long i = 0; i < batch_size; i++)
 		{
@@ -383,27 +383,27 @@ void TDataset :: GetRandomSampleBatch(
 		for (unsigned long i = 0; i < batch_size; i++)
 		{
 			ThreadPool->add_task_by_value(
-				[this, i, &batch_samples, &batch_labels]() {		//???Нужно передать указатели на позицию в массиве и их итерировать, чтобы оптимизировать кэш
+				[this, i, &batch_samples, &batch_labels]() {		//???РќСѓР¶РЅРѕ РїРµСЂРµРґР°С‚СЊ СѓРєР°Р·Р°С‚РµР»Рё РЅР° РїРѕР·РёС†РёСЋ РІ РјР°СЃСЃРёРІРµ Рё РёС… РёС‚РµСЂРёСЂРѕРІР°С‚СЊ, С‡С‚РѕР±С‹ РѕРїС‚РёРјРёР·РёСЂРѕРІР°С‚СЊ РєСЌС€
 					cv::Mat sample;
 					unsigned long label;
 					GetRandomSample(sample, label);
-					cv::resize(sample, sample, DatasetProperties.ImgSize);	//!!!делать resize внутри (перед аугментацией или после)
+					cv::resize(sample, sample, DatasetProperties.ImgSize);	//!!!РґРµР»Р°С‚СЊ resize РІРЅСѓС‚СЂРё (РїРµСЂРµРґ Р°СѓРіРјРµРЅС‚Р°С†РёРµР№ РёР»Рё РїРѕСЃР»Рµ)
 					cv::Scalar mean, stddev;
-					meanStdDev(sample, mean, stddev);
+					cv::meanStdDev(sample, mean, stddev);
 
 					size_t it = i * 1/*mat.channels()*/ * DatasetProperties.ImgSize.height/*rows*/ * DatasetProperties.ImgSize.width/*cols*/;
 					for (int cm = 0; cm < sample.channels(); cm++)
 						for (int im = 0; im < sample.rows; im++)
 							for (int jm = 0; jm < sample.cols; jm++)
 							{
-								batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm])/255 - (float)(mean[0])/255) / ((float)(stddev[0])/255);
+								batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm])/255 - (float)(mean[cm])/255) / ((float)(stddev[cm])/255);
 								it++;
 							}
 					batch_labels[i] = label;
 				}
 			);
 		};
-		//Каждому потоку нужен свой экземпляр детектора, потому что может быть разного размера и тд.
+		//РљР°Р¶РґРѕРјСѓ РїРѕС‚РѕРєСѓ РЅСѓР¶РµРЅ СЃРІРѕР№ СЌРєР·РµРјРїР»СЏСЂ РґРµС‚РµРєС‚РѕСЂР°, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РјРѕР¶РµС‚ Р±С‹С‚СЊ СЂР°Р·РЅРѕРіРѕ СЂР°Р·РјРµСЂР° Рё С‚Рґ.
 		ThreadPool->wait_for_all_tasks();
 
 	}	else {
@@ -414,16 +414,16 @@ void TDataset :: GetRandomSampleBatch(
 		for (unsigned long i = 0; i < batch_size; i++)
 		{
 			GetRandomSample(sample, label);
-			cv::resize(sample, sample, DatasetProperties.ImgSize);		//!!!делать resize внутри (перед аугментацией)
+			cv::resize(sample, sample, DatasetProperties.ImgSize);		//!!!РґРµР»Р°С‚СЊ resize РІРЅСѓС‚СЂРё (РїРµСЂРµРґ Р°СѓРіРјРµРЅС‚Р°С†РёРµР№)
 			cv::Scalar mean, stddev;
-			meanStdDev(sample, mean, stddev);
+			cv::meanStdDev(sample, mean, stddev);
 
 			size_t it = i * 1/*mat.channels()*/ * DatasetProperties.ImgSize.height/*rows*/ * DatasetProperties.ImgSize.width/*cols*/;
 			for (int cm = 0; cm < sample.channels(); cm++)
 				for (int im = 0; im < sample.rows; im++)
 					for (int jm = 0; jm < sample.cols; jm++)
 					{
-						batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm])/255 - (float)(mean[0]) / 255) / ((float)(stddev[0]) / 255);
+						batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm])/255 - (float)(mean[cm]) / 255) / ((float)(stddev[cm]) / 255);
 						it++;
 					}
 			batch_labels[i] = label;

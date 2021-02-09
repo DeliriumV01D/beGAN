@@ -54,7 +54,7 @@ DISABLE_WARNING(4244)
 DISABLE_WARNING_POP
 #endif
 
-///Вспомогательная структура для хранения адресов элементов выборки и их меток
+///Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅР°СЏ СЃС‚СЂСѓРєС‚СѓСЂР° РґР»СЏ С…СЂР°РЅРµРЅРёСЏ Р°РґСЂРµСЃРѕРІ СЌР»РµРјРµРЅС‚РѕРІ РІС‹Р±РѕСЂРєРё Рё РёС… РјРµС‚РѕРє
 class TLabeledSamplePath {
 public:
 	std::string SamplePath;
@@ -67,7 +67,7 @@ public:
 	};
 };
 
-///Параметры датасета для работы с обучающей выборкой
+///РџР°СЂР°РјРµС‚СЂС‹ РґР°С‚Р°СЃРµС‚Р° РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ РѕР±СѓС‡Р°СЋС‰РµР№ РІС‹Р±РѕСЂРєРѕР№
 /*typedef*/ struct TDatasetProperties {
  	std::string Dir;
 	cv::Size ImgSize;
@@ -84,7 +84,7 @@ public:
 	int MaxMotionBlurLen;
 };
 
-///Параметры датасета для работы с обучающей выборкой по умолчанию
+///РџР°СЂР°РјРµС‚СЂС‹ РґР°С‚Р°СЃРµС‚Р° РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ РѕР±СѓС‡Р°СЋС‰РµР№ РІС‹Р±РѕСЂРєРѕР№ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
 static const TDatasetProperties DATASET_PROPERTIES_DEFAULTS = 
 {
 	"",
@@ -102,14 +102,14 @@ static const TDatasetProperties DATASET_PROPERTIES_DEFAULTS =
 	5
 };
 
-///Датасет для работы с обучающей выборкой
+///Р”Р°С‚Р°СЃРµС‚ РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ РѕР±СѓС‡Р°СЋС‰РµР№ РІС‹Р±РѕСЂРєРѕР№
 class TDataset {
 protected:
 	TDatasetProperties DatasetProperties;
-	TIndexedObjects <std::string> Labels;										///Метки классов - имена подкаталогов, текст из файлов
-	std::vector <TLabeledSamplePath> LabeledSamplePaths;		///Адреса элементов обучающей выборки и метки классов
+	TIndexedObjects <std::string> Labels;										///РњРµС‚РєРё РєР»Р°СЃСЃРѕРІ - РёРјРµРЅР° РїРѕРґРєР°С‚Р°Р»РѕРіРѕРІ, С‚РµРєСЃС‚ РёР· С„Р°Р№Р»РѕРІ
+	std::vector <TLabeledSamplePath> LabeledSamplePaths;		///РђРґСЂРµСЃР° СЌР»РµРјРµРЅС‚РѕРІ РѕР±СѓС‡Р°СЋС‰РµР№ РІС‹Р±РѕСЂРєРё Рё РјРµС‚РєРё РєР»Р°СЃСЃРѕРІ
 	dlib::thread_pool * ThreadPool;
-	std::mutex	ReadMutex,																	///На случай one_thread_reading закроет imread
+	std::mutex	ReadMutex,																	///РќР° СЃР»СѓС‡Р°Р№ one_thread_reading Р·Р°РєСЂРѕРµС‚ imread
 							DetectMutex;
 public:
 	TDataset(const TDatasetProperties &dataset_properties);
@@ -118,41 +118,41 @@ public:
 	virtual unsigned long Size();
 	virtual unsigned long ClassNumber();
 
-	///Работаем в предположении, что все изображения одного объекта лежат в одном подкаталоге
+	///Р Р°Р±РѕС‚Р°РµРј РІ РїСЂРµРґРїРѕР»РѕР¶РµРЅРёРё, С‡С‚Рѕ РІСЃРµ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ РѕРґРЅРѕРіРѕ РѕР±СЉРµРєС‚Р° Р»РµР¶Р°С‚ РІ РѕРґРЅРѕРј РїРѕРґРєР°С‚Р°Р»РѕРіРµ
 	virtual std::string GetLabelFromPath(const std::string &path);
-	///Получить объект из выборки по индексу
+	///РџРѕР»СѓС‡РёС‚СЊ РѕР±СЉРµРєС‚ РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 	virtual cv::Mat GetSampleCVMat(const unsigned long sample_idx);
-	///Получить объект из выборки по индексу
+	///РџРѕР»СѓС‡РёС‚СЊ РѕР±СЉРµРєС‚ РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 	virtual dlib::matrix<unsigned char> GetSampleDLibMatrix(const unsigned long sample_idx);
-	///Получить метку по индексу объекта
+	///РџРѕР»СѓС‡РёС‚СЊ РјРµС‚РєСѓ РїРѕ РёРЅРґРµРєСЃСѓ РѕР±СЉРµРєС‚Р°
 	virtual std::string GetLabel(const unsigned long sample_idx);
-	///Получить метку по индексу метки
+	///РџРѕР»СѓС‡РёС‚СЊ РјРµС‚РєСѓ РїРѕ РёРЅРґРµРєСЃСѓ РјРµС‚РєРё
 	virtual std::string GetLabelByIdx(const unsigned long label_idx);
-	///Получить индекс метки из выборки по индексу
+	///РџРѕР»СѓС‡РёС‚СЊ РёРЅРґРµРєСЃ РјРµС‚РєРё РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 	virtual unsigned long GetLabelIdx(const unsigned long sample_idx);
-	///Сформировать вход нейросетки по двум изображениям(одинакового размера!)
+	///РЎС„РѕСЂРјРёСЂРѕРІР°С‚СЊ РІС…РѕРґ РЅРµР№СЂРѕСЃРµС‚РєРё РїРѕ РґРІСѓРј РёР·РѕР±СЂР°Р¶РµРЅРёСЏРј(РѕРґРёРЅР°РєРѕРІРѕРіРѕ СЂР°Р·РјРµСЂР°!)
 	virtual dlib::matrix<unsigned char> MakeInputSamplePair(dlib::matrix<unsigned char> * img1, dlib::matrix<unsigned char> * img2);
 
-	///Получить пару изображений positive == true одного объекта, false - разных объектов и соответствующую метку
+	///РџРѕР»СѓС‡РёС‚СЊ РїР°СЂСѓ РёР·РѕР±СЂР°Р¶РµРЅРёР№ positive == true РѕРґРЅРѕРіРѕ РѕР±СЉРµРєС‚Р°, false - СЂР°Р·РЅС‹С… РѕР±СЉРµРєС‚РѕРІ Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰СѓСЋ РјРµС‚РєСѓ
 	virtual void GetInputSamplePair(bool positive, dlib::matrix<unsigned char> &sample_pair, unsigned long &label);
-	///Получить пакет пар изображений и соответвующие метки
+	///РџРѕР»СѓС‡РёС‚СЊ РїР°РєРµС‚ РїР°СЂ РёР·РѕР±СЂР°Р¶РµРЅРёР№ Рё СЃРѕРѕС‚РІРµС‚РІСѓСЋС‰РёРµ РјРµС‚РєРё
 	virtual void GetInputSamplePairBatch(
 		std::vector<dlib::matrix<unsigned char>> &batch_sample_pairs, 
 		std::vector<unsigned long> &batch_labels,
 		const size_t batch_size
 	);
 
-	///Случайный объект из датасета и соответствующая ему метка	 cv::Mat - dlib::matrix переписать через шаблон?
+	///РЎР»СѓС‡Р°Р№РЅС‹Р№ РѕР±СЉРµРєС‚ РёР· РґР°С‚Р°СЃРµС‚Р° Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰Р°СЏ РµРјСѓ РјРµС‚РєР°	 cv::Mat - dlib::matrix РїРµСЂРµРїРёСЃР°С‚СЊ С‡РµСЂРµР· С€Р°Р±Р»РѕРЅ?
 	virtual void GetRandomSample(dlib::matrix<unsigned char> &sample, unsigned long &label);
-	///Случайный объект из датасета и соответствующая ему метка  cv::Mat - dlib::matrix переписать через шаблон?
+	///РЎР»СѓС‡Р°Р№РЅС‹Р№ РѕР±СЉРµРєС‚ РёР· РґР°С‚Р°СЃРµС‚Р° Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰Р°СЏ РµРјСѓ РјРµС‚РєР°  cv::Mat - dlib::matrix РїРµСЂРµРїРёСЃР°С‚СЊ С‡РµСЂРµР· С€Р°Р±Р»РѕРЅ?
 	virtual void GetRandomSample(cv::Mat &sample, unsigned long &label);
-	///Получить пакет изображений и соответствующие им метки  cv::Mat - dlib::matrix переписать через шаблон?
+	///РџРѕР»СѓС‡РёС‚СЊ РїР°РєРµС‚ РёР·РѕР±СЂР°Р¶РµРЅРёР№ Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёРµ РёРј РјРµС‚РєРё  cv::Mat - dlib::matrix РїРµСЂРµРїРёСЃР°С‚СЊ С‡РµСЂРµР· С€Р°Р±Р»РѕРЅ?
 	virtual void GetRandomSampleBatch(
 		std::vector<dlib::matrix<unsigned char>> &batch_samples, 
 		std::vector<unsigned long> &batch_labels,
 		const size_t batch_size
 	);
-	/////Получить пакет изображений и соответствующие им метки  cv::Mat - dlib::matrix переписать через шаблон?
+	/////РџРѕР»СѓС‡РёС‚СЊ РїР°РєРµС‚ РёР·РѕР±СЂР°Р¶РµРЅРёР№ Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёРµ РёРј РјРµС‚РєРё  cv::Mat - dlib::matrix РїРµСЂРµРїРёСЃР°С‚СЊ С‡РµСЂРµР· С€Р°Р±Р»РѕРЅ?
 	//virtual void GetRandomSampleBatch(
 	//	cv::Mat &data, 
 	//	cv::Mat &classes,
@@ -168,14 +168,6 @@ public:
 	);
 	#endif
 
-//#ifdef USE_MXNET
-//	///Returns MXNet DataBatch of size = batch_size
-//	virtual void GetRandomSampleBatch(
-//		mxnet::cpp::DataBatch &mx_data_batch,
-//		const size_t batch_size,
-//		const mxnet::cpp::Context &context
-//	);
-//#endif
 };
 
 #endif

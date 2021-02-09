@@ -2,7 +2,7 @@
 
 #include <RandomWarpedImage.h>
 
-//Копия params, но с отключенным Warp
+//РљРѕРїРёСЏ params, РЅРѕ СЃ РѕС‚РєР»СЋС‡РµРЅРЅС‹Рј Warp
 TDatasetProperties GetNoWarpParams(const TDatasetProperties &properties)
 {
 	TDatasetProperties result = properties;
@@ -39,7 +39,7 @@ TFacesDataset :: ~TFacesDataset()
 	}
 }
 
-//Получить объект из выборки по индексу
+//РџРѕР»СѓС‡РёС‚СЊ РѕР±СЉРµРєС‚ РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 cv::Mat TFacesDataset :: GetSampleCVMat(const unsigned long sample_idx)
 {
 	cv::Mat result;
@@ -47,13 +47,13 @@ cv::Mat TFacesDataset :: GetSampleCVMat(const unsigned long sample_idx)
 	return result;
 }
 
-//Получить объект из выборки по индексу
+//РџРѕР»СѓС‡РёС‚СЊ РѕР±СЉРµРєС‚ РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 dlib::matrix<unsigned char> TFacesDataset :: GetSampleDLibMatrix(const unsigned long sample_idx)
 {
 	dlib::matrix<unsigned char> //temp, 
 															result(FacesDatasetProperties.DatasetProperties.ImgSize.height, FacesDatasetProperties.DatasetProperties.ImgSize.width);
 	cv::Mat gray_img_buf = TDataset::GetSampleCVMat(sample_idx);
-	// //Преобразуем ее в dlib::matrix
+	// //РџСЂРµРѕР±СЂР°Р·СѓРµРј РµРµ РІ dlib::matrix
 	//CVMatToDlibMatrix8U(gray_img_buf, temp);
 	std::vector<dlib::rectangle> face_rects;
 	dlib::array<dlib::matrix<unsigned char> > faces;
@@ -74,7 +74,7 @@ dlib::matrix<unsigned char> TFacesDataset :: GetSampleDLibMatrix(const unsigned 
 	};
 	
 	//dlib::interpolate_bilinear b;
-	if (faces.size() == 1) resize_image(faces[0], result/*, b*/);	// > 1 - выбрать с макс площадью, 0 - exception
+	if (faces.size() == 1) resize_image(faces[0], result/*, b*/);	// > 1 - РІС‹Р±СЂР°С‚СЊ СЃ РјР°РєСЃ РїР»РѕС‰Р°РґСЊСЋ, 0 - exception
 	if (faces.size() < 1) throw TException("Error TDataset :: GetSample: face not found on image from path: "+ LabeledSamplePaths[sample_idx].SamplePath);
 	if (faces.size() > 1)
 	{

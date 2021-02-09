@@ -55,7 +55,7 @@ struct TMNISTDatasetProperties
 	cv::Size ImgSize;
 };
 
-///Òåñòîâûé äàòàñåò äëÿ áûñòðîé ïðîâåðêè 
+///Ð¢ÐµÑÑ‚Ð¾Ð²Ñ‹Ð¹ Ð´Ð°Ñ‚Ð°ÑÐµÑ‚ Ð´Ð»Ñ Ð±Ñ‹ÑÑ‚Ñ€Ð¾Ð¹ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ¸ 
 class TMNISTDataset {
 protected:
 	const int NumberOfImages = 60000;
@@ -72,7 +72,7 @@ public:
 
 		std::filebuf buffer;
 		std::istream stream(&buffer);
-		//×èòàåì label-ôàéë öåëèêîì â ïàìÿòü
+		//Ð§Ð¸Ñ‚Ð°ÐµÐ¼ label-Ñ„Ð°Ð¹Ð» Ñ†ÐµÐ»Ð¸ÐºÐ¾Ð¼ Ð² Ð¿Ð°Ð¼ÑÑ‚ÑŒ
 		if (buffer.open(DatasetProperties.LabelPath, std::ios::in | std::ios::binary | std::ios::ate))
 		{
 			stream.seekg(8);
@@ -87,8 +87,8 @@ public:
 
 	virtual ~TMNISTDataset() {};
 
-	//Ïî-õîðîøåìó, íóæåí ñëó÷àéíûé ñýìïë
-	virtual void GetSample(cv::Mat& sample, unsigned long& label)
+	//ÐŸÐ¾-Ñ…Ð¾Ñ€Ð¾ÑˆÐµÐ¼Ñƒ, Ð½ÑƒÐ¶ÐµÐ½ ÑÐ»ÑƒÑ‡Ð°Ð¹Ð½Ñ‹Ð¹ ÑÑÐ¼Ð¿Ð»
+	virtual void GetSample(cv::Mat &sample, unsigned long &label)
 	{
 		int idx = RandomInt() % this->Size();
 		cv::Mat temp(NumberOfRows, NumberOfColumns, CV_8UC1);
@@ -114,10 +114,10 @@ public:
 
 
 	void GetRandomSampleBatch(
-		std::vector<mx_float>& batch_samples,
-		std::vector<mx_float>& batch_labels,
+		std::vector<mx_float> &batch_samples,
+		std::vector<mx_float> &batch_labels,
 		const size_t batch_size,
-		const mxnet::cpp::Context& context
+		const mxnet::cpp::Context &context
 	) {
 		size_t samples_size = batch_size * 1/*mat.channels()*/ * DatasetProperties.ImgSize.height/*rows*/ * DatasetProperties.ImgSize.width/*cols*/,
 			labels_size = batch_size;
@@ -133,7 +133,7 @@ public:
 		for (unsigned long i = 0; i < batch_size; i++)
 		{
 			GetSample(sample, label);
-			cv::resize(sample, sample, DatasetProperties.ImgSize);		//!!!äåëàòü resize âíóòðè (ïåðåä àóãìåíòàöèåé)
+			cv::resize(sample, sample, DatasetProperties.ImgSize);		//!!!Ð´ÐµÐ»Ð°Ñ‚ÑŒ resize Ð²Ð½ÑƒÑ‚Ñ€Ð¸ (Ð¿ÐµÑ€ÐµÐ´ Ð°ÑƒÐ³Ð¼ÐµÐ½Ñ‚Ð°Ñ†Ð¸ÐµÐ¹)
 			cv::Scalar mean, stddev;
 			meanStdDev(sample, mean, stddev);
 
@@ -142,7 +142,7 @@ public:
 				for (int im = 0; im < sample.rows; im++)
 					for (int jm = 0; jm < sample.cols; jm++)
 					{
-						batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm]) / 255 - (float)(mean[0]) / 255) / ((float)(stddev[0]) / 255);
+						batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm]) / 255 - (float)(mean[cm]) / 255) / ((float)(stddev[cm]) / 255);
 						it++;
 					}
 			batch_labels[i] = (mx_float)label;

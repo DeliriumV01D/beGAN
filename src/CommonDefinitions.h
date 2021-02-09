@@ -5,6 +5,7 @@
 #include <dlib/data_io.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/imgproc/types_c.h>
+#include <opencv2/highgui/highgui.hpp>
 
 #ifdef USE_MXNET
 #if defined(_MSC_VER)
@@ -58,7 +59,7 @@ DISABLE_WARNING_POP
 
 #include <WriteToLog.h>
 
-///Преобразование cv::Mat в QImage
+///РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ cv::Mat РІ QImage
 inline QImage cvMatToQImage(const cv::Mat &mat)
 {
   switch (mat.type())
@@ -103,7 +104,7 @@ inline QImage cvMatToQImage(const cv::Mat &mat)
   return QImage();
 }
 
-///Преобразование cv::Mat в QPixmap
+///РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ cv::Mat РІ QPixmap
 inline QPixmap cvMatToQPixmap(const cv::Mat &mat)
 {
   return QPixmap::fromImage(cvMatToQImage(mat));
@@ -144,7 +145,7 @@ static void GetCorners(
 	cv::perspectiveTransform(objCorners, sceneCorners, H);
 }
 
-///Преобразование в градации серого
+///РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ РІ РіСЂР°РґР°С†РёРё СЃРµСЂРѕРіРѕ
 static void ToGrayscale(const cv::Mat &image, cv::Mat &gray)
 {
 	if (image.type() != CV_8UC1)
@@ -156,20 +157,20 @@ static void ToGrayscale(const cv::Mat &image, cv::Mat &gray)
 	}
 }
 
-///Преобразование матрицы чисел с плавающей запятой из формата opencv в формат dlib
-//В обратную сторону cv::Mat cv_mat = dlib::toMat(dlib_matrix);
+///РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ РјР°С‚СЂРёС†С‹ С‡РёСЃРµР» СЃ РїР»Р°РІР°СЋС‰РµР№ Р·Р°РїСЏС‚РѕР№ РёР· С„РѕСЂРјР°С‚Р° opencv РІ С„РѕСЂРјР°С‚ dlib
+//Р’ РѕР±СЂР°С‚РЅСѓСЋ СЃС‚РѕСЂРѕРЅСѓ cv::Mat cv_mat = dlib::toMat(dlib_matrix);
 static void CVMatToDlibMatrixFC1(const cv::Mat &mat, dlib::matrix<float> &dlib_matrix)
 {
-	cv::Mat temp(mat.cols, mat.rows, CV_32FC1);
+	cv::Mat temp(mat.rows, mat.cols, CV_32FC1);
 	cv::normalize(mat, temp, 0.0, 1.0, cv::NORM_MINMAX, CV_32FC1);
 	dlib::assign_image(dlib_matrix, dlib::cv_image<float>(temp));
 }
 
-///Преобразование матрицы целых чисел из формата opencv в формат dlib
-//В обратную сторону cv::Mat cv_mat = dlib::toMat(dlib_matrix);
+///РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ РјР°С‚СЂРёС†С‹ С†РµР»С‹С… С‡РёСЃРµР» РёР· С„РѕСЂРјР°С‚Р° opencv РІ С„РѕСЂРјР°С‚ dlib
+//Р’ РѕР±СЂР°С‚РЅСѓСЋ СЃС‚РѕСЂРѕРЅСѓ cv::Mat cv_mat = dlib::toMat(dlib_matrix);
 static void CVMatToDlibMatrix8U(const cv::Mat &mat, dlib::matrix<unsigned char> &dlib_matrix)
 {
-	cv::Mat temp(mat.cols, mat.rows, CV_8U);
+	cv::Mat temp(mat.rows, mat.cols, CV_8U);
 	cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8U);
 	dlib::assign_image(dlib_matrix, dlib::cv_image<unsigned char>(temp));
 }
@@ -177,11 +178,12 @@ static void CVMatToDlibMatrix8U(const cv::Mat &mat, dlib::matrix<unsigned char> 
 #ifdef USE_MXNET
 
 //convert cv::Mat to mxnet::cpp::NDArray format
-//!!!Передевать NDArray параметром, если его размеры удовлетворяют, то не производить выделения памяти
+//!!!РџРµСЂРµРґРµРІР°С‚СЊ NDArray РїР°СЂР°РјРµС‚СЂРѕРј, РµСЃР»Рё РµРіРѕ СЂР°Р·РјРµСЂС‹ СѓРґРѕРІР»РµС‚РІРѕСЂСЏСЋС‚, С‚Рѕ РЅРµ РїСЂРѕРёР·РІРѕРґРёС‚СЊ РІС‹РґРµР»РµРЅРёСЏ РїР°РјСЏС‚Рё
+//!!!Р•СЃР»Рё РїРѕСЂСЏРґРѕРє СЃРѕРІРїР°РґР°РµС‚, С‚Рѕ memcpy
 static mxnet::cpp::NDArray CVMatToMXNDArray(const cv::Mat &mat, const mxnet::cpp::Context &context)
 {
 	//if (nd_array.GetShape() )
-	mxnet::cpp::NDArray nd_array(mxnet::cpp::Shape(1, mat.channels(), mat.rows, mat.cols), context, false);
+	mxnet::cpp::NDArray nd_array(mxnet::cpp::Shape(1, mat.channels(), mat.cols, mat.rows), context, false);
 	std::vector<mx_float> data;
 	data.reserve(1 * mat.channels() * mat.rows * mat.cols);
 
@@ -189,7 +191,7 @@ static mxnet::cpp::NDArray CVMatToMXNDArray(const cv::Mat &mat, const mxnet::cpp
 		for (int i = 0; i < mat.rows; i++) 
 			for (int j = 0; j < mat.cols; j++) 
 			{
-				data.emplace_back(static_cast<mx_float>(mat.data[(i * mat.rows + j) * mat.channels() + c]));
+				data.emplace_back(static_cast<mx_float>(mat.data[(i * mat.cols + j) * mat.channels() + c]));
 			}
 
 	nd_array.SyncCopyFromCPU(data.data(), 1 * mat.channels() * mat.rows * mat.cols);
@@ -198,19 +200,63 @@ static mxnet::cpp::NDArray CVMatToMXNDArray(const cv::Mat &mat, const mxnet::cpp
 }
 
 
-//ОБРАТНО:
+///nd_array should already be not in GPU 
+///result image type can be float 1 channel CV_32FC1 or float 3 channel CV_32FC3
+static cv::Mat MXNDArrayToCVMat(const mxnet::cpp::NDArray nd_array, mxnet::cpp::Shape shape = mxnet::cpp::Shape()/*, const mxnet::cpp::Context &context*/)
+{
+	//data_shape = mxnet::cpp::Shape(Properties.BatchSize, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight);
+	//label_shape = mxnet::cpp::Shape(Properties.BatchSize);
+	
+	if (shape == mxnet::cpp::Shape())
+		shape = nd_array.GetShape();
 
-//dst = cv::Mat(out->shape()[0], out->shape()[1], flag == 0 ? CV_8U : CV_8UC3,
-//	out->data().dptr_);
-//
-//cdef void array2mat(np.ndarray arr, Mat& mat) :
-//	cdef int r = arr.shape[0]
-//	cdef int c = arr.shape[1]
-//	cdef int mat_type = CV_32FC1            # or CV_64FC1, or CV_8UC3, or whatever
-//	mat.create(r, c, mat_type)
-//	cdef unsigned int px_size = 4           # 8 for single - channel double image or
-//	#   1 * 3 for three - channel uint8 image
-//	memcpy(mat.data, arr.data, r * c * px_size)
+	const mx_float * data = nd_array.GetData();
+
+	int img_type;
+	if (shape[1] == 1)
+		img_type = CV_32FC1;
+	else if (shape[1] == 3)
+		img_type = CV_32FC3;
+	else
+		std::runtime_error("MXNDArrayToCVMat error: the number of channels of the image is expected to be 1 or 3");
+
+	cv::Mat result(shape[3], shape[2], img_type);
+
+	int k = 0;
+	for (int c = 0; c < result.channels(); c++)
+		for (int i = 0; i < result.rows; i++)
+			for (int j = 0; j < result.cols; j++)
+			{
+				*((float*)&(result.data[((i * result.cols + j) * result.channels() + c)*sizeof(float)])) = data[k];
+				//result.data[k] = data[(i * result.rows + j) * result.channels() + c];
+				k++;
+			}
+	return result;
+}
+
+//TEST
+//mxnet::cpp::Context context_gpu(mxnet::cpp::DeviceType::kGPU, 0),
+//context_cpu(mxnet::cpp::DeviceType::kCPU, 0);
+//MXSetNumOMPThreads(std::thread::hardware_concurrency());
+//cv::Mat m = cv::imread("D:/MMedia/Pictures/_icvfAkQX3k.jpg");
+//std::cout << m.cols << " " << m.rows << std::endl;
+//mxnet::cpp::NDArray nda1 = CVMatToMXNDArray(m, context_gpu);
+//auto shape1 = nda1.GetShape();
+//for (size_t i = 0; i < shape1.size(); i++)
+//	std::cout << shape1[i] << " ";
+//std::cout << std::endl;
+//std::cout << nda1.GetContext().GetDeviceType() << std::endl;
+//mxnet::cpp::NDArray nda2 = nda1.Copy(context_cpu);
+//mxnet::cpp::NDArray::WaitAll();
+//auto shape2 = nda2.GetShape();
+//for (size_t i = 0; i < shape2.size(); i++)
+//	std::cout << shape2[i] << " ";
+//std::cout << std::endl;
+//std::cout << nda2.GetContext().GetDeviceType() << std::endl;
+//cv::Mat mat = MXNDArrayToCVMat(nda2);
+//std::cout << mat.cols << " " << mat.rows << std::endl;
+//cv::Mat temp(mat.rows, mat.cols, CV_8U);
+//cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8U);
 
 #endif //USE_MXNET
 

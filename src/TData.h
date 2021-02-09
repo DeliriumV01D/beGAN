@@ -8,24 +8,26 @@
 #include <fstream>
 #include <list>
 
-//Чтение строки данных из файла
+///Чтение строки данных из файла
 inline bool ReadStringFromFile(const std::string &file_name, std::string &s)
 {
 	bool result;
+	s.clear();
   std::ifstream in_stream;
   in_stream.open(file_name.c_str());
 	result = in_stream.is_open();
 	if (result)
 	{
 		in_stream.seekg(0);
-		std::getline(in_stream, s);
-		//in_stream>>s;	
+		std::string temp;
+		while (std::getline(in_stream, temp))
+			s += temp + "\n";	
 		in_stream.close();
 	}
   return result;
 };
 
-//Запись строки в файл
+///Запись строки в файл
 inline bool WriteStringToFile(const std::string &file_name, const std::string &s)
 {
 	bool result;

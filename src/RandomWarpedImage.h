@@ -1,4 +1,4 @@
-﻿#ifndef RANDOM_WARPED_IMAGE_H
+#ifndef RANDOM_WARPED_IMAGE_H
 #define RANDOM_WARPED_IMAGE_H
 
 #include <opencv2/highgui/highgui.hpp>

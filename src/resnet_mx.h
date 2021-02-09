@@ -2,6 +2,33 @@
 
 #include "mxnet-cpp/MxNetCpp.h"
 
+///in mxnet deconvolution is transpose convolution
+mxnet::cpp::Symbol DeconvolutionNoBias(
+	const std::string &symbol_name,
+	mxnet::cpp::Symbol data,
+	mxnet::cpp::Symbol weight,
+	mxnet::cpp::Shape kernel,
+	int num_filter,
+	mxnet::cpp::Shape stride = mxnet::cpp::Shape(1, 1),
+	mxnet::cpp::Shape dilate = mxnet::cpp::Shape(1, 1),
+	mxnet::cpp::Shape pad = mxnet::cpp::Shape(0, 0),
+	int num_group = 1,
+	int64_t workspace = 512
+){
+	return mxnet::cpp::Operator("Deconvolution")
+		.SetParam("kernel", kernel)
+		.SetParam("num_filter", num_filter)
+		.SetParam("stride", stride)
+		.SetParam("dilate", dilate)
+		.SetParam("pad", pad)
+		.SetParam("num_group", num_group)
+		.SetParam("workspace", workspace)
+		.SetParam("no_bias", true)
+		.SetInput("data", data)
+		.SetInput("weight", weight)
+		.CreateSymbol(symbol_name);
+}
+
 mxnet::cpp::Symbol ConvolutionNoBias(
 	const std::string& symbol_name,
 	mxnet::cpp::Symbol data,
@@ -28,6 +55,34 @@ mxnet::cpp::Symbol ConvolutionNoBias(
 		.CreateSymbol(symbol_name);
 }
 
+mxnet::cpp::Symbol GetTrConv(
+	const std::string &name,
+	mxnet::cpp::Symbol data,
+	int num_filter,
+	mxnet::cpp::Shape kernel,
+	mxnet::cpp::Shape stride,
+	mxnet::cpp::Shape pad,
+	bool with_relu,
+	mx_float bn_momentum
+) {
+	mxnet::cpp::Symbol tr_conv_w(name + "_w");
+	mxnet::cpp::Symbol tr_conv = DeconvolutionNoBias(name, data, tr_conv_w, kernel, num_filter, stride, mxnet::cpp::Shape(1, 1), pad, 1, 512);
+
+	mxnet::cpp::Symbol gamma(name + "_gamma");
+	mxnet::cpp::Symbol beta(name + "_beta");
+	mxnet::cpp::Symbol mmean(name + "_mmean");
+	mxnet::cpp::Symbol mvar(name + "_mvar");
+
+	mxnet::cpp::Symbol bn = BatchNorm(name + "_bn", tr_conv, gamma, beta, mmean, mvar, 2e-5, bn_momentum, false);
+
+	if (with_relu)
+	{
+		return Activation(name + "_relu", bn, "relu");
+	}	else {
+		return bn;
+	}
+}
+
 mxnet::cpp::Symbol GetConv(
 	const std::string& name, 
 	mxnet::cpp::Symbol data,
@@ -51,14 +106,13 @@ mxnet::cpp::Symbol GetConv(
 	if (with_relu)
 	{
 		return Activation(name + "_relu", bn, "relu");
-	}
-	else {
+	}	else {
 		return bn;
 	}
 }
 
-mxnet::cpp::Symbol MakeBlock(
-	const std::string& name,
+mxnet::cpp::Symbol MakeTrBlock(
+	const std::string &name,
 	mxnet::cpp::Symbol data,
 	int num_filter,
 	bool dim_match,
@@ -68,8 +122,95 @@ mxnet::cpp::Symbol MakeBlock(
 	if (dim_match)
 	{
 		stride = mxnet::cpp::Shape(1, 1);
+	}	else {
+		stride = mxnet::cpp::Shape(2, 2);
 	}
-	else {
+
+	mxnet::cpp::Symbol trconv1;
+	if (dim_match)		//!!!’з как тут правильно сделать
+	{
+		trconv1 = GetTrConv(
+			name + "_trconv1",
+			data,
+			num_filter,
+			mxnet::cpp::Shape(3, 3),
+			stride,
+			mxnet::cpp::Shape(1, 1),
+			true,
+			bn_momentum
+		);
+	} else {
+		auto trconv1p = GetTrConv(
+			name + "_trconv1p",
+			data,
+			num_filter,
+			mxnet::cpp::Shape(3, 3),
+			mxnet::cpp::Shape(1, 1),
+			mxnet::cpp::Shape(1, 1),
+			false,
+			bn_momentum
+		);
+
+		trconv1 = GetTrConv(
+			name + "_trconv1",
+			trconv1p,
+			num_filter,
+			mxnet::cpp::Shape(2, 2),
+			stride,
+			mxnet::cpp::Shape(0, 0),
+			true,
+			bn_momentum
+		);
+	}
+
+	mxnet::cpp::Symbol trconv2 = GetTrConv(
+			name + "_trconv2",
+			trconv1,
+			num_filter,
+			mxnet::cpp::Shape(3, 3),
+			mxnet::cpp::Shape(1, 1),
+			mxnet::cpp::Shape(1, 1),
+			false,
+			bn_momentum
+		);
+
+	mxnet::cpp::Symbol shortcut;
+
+	if (dim_match)
+	{
+		shortcut = data;
+	}	else {
+		mxnet::cpp::Symbol shortcut_w(name + "_proj_w");
+		shortcut = DeconvolutionNoBias(
+			name + "_proj",
+			data,
+			shortcut_w,
+			mxnet::cpp::Shape(2, 2),
+			num_filter,
+			mxnet::cpp::Shape(2, 2),
+			mxnet::cpp::Shape(1, 1),
+			mxnet::cpp::Shape(0, 0),
+			1,
+			512
+		);
+	}
+
+	mxnet::cpp::Symbol fused = shortcut + trconv2;
+	return Activation(name + "_relu", fused, "relu");
+}
+
+mxnet::cpp::Symbol MakeBlock(
+	const std::string &name,
+	mxnet::cpp::Symbol data,
+	int num_filter,
+	bool dim_match,
+	mx_float bn_momentum
+) {
+	mxnet::cpp::Shape stride;
+	if (dim_match)
+	{
+		stride = mxnet::cpp::Shape(1, 1);
+	}	else {
 		stride = mxnet::cpp::Shape(2, 2);
 	}
 

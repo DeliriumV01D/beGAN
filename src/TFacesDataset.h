@@ -4,13 +4,13 @@
 #include <TDataset.h>
 #include <TFaceDetector.h>
 
-///Параметры датасета для работы с обучающей выборкой
+///РџР°СЂР°РјРµС‚СЂС‹ РґР°С‚Р°СЃРµС‚Р° РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ РѕР±СѓС‡Р°СЋС‰РµР№ РІС‹Р±РѕСЂРєРѕР№
 /*typedef*/ struct TFacesDatasetProperties {
 	TDatasetProperties DatasetProperties;
 	std::string PoseModelFilename;
 };
 		
-///Параметры датасета для работы с обучающей выборкой по умолчанию
+///РџР°СЂР°РјРµС‚СЂС‹ РґР°С‚Р°СЃРµС‚Р° РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ РѕР±СѓС‡Р°СЋС‰РµР№ РІС‹Р±РѕСЂРєРѕР№ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
 static const TFacesDatasetProperties FACES_DATASET_PROPERTIES_DEFAULTS = 
 {
 	DATASET_PROPERTIES_DEFAULTS,
@@ -21,19 +21,19 @@ static const TFacesDatasetProperties FACES_DATASET_PROPERTIES_DEFAULTS =
 class TFacesDataset : public TDataset{
 protected:
 	TFacesDatasetProperties FacesDatasetProperties;
-	std::vector <TFaceDetector *> FaceDetectors;						///Детекторы лиц по одному на поток
-	unsigned long FreeDetectorIdx;													///Способ распределить детектор по потокам
+	std::vector <TFaceDetector *> FaceDetectors;						///Р”РµС‚РµРєС‚РѕСЂС‹ Р»РёС† РїРѕ РѕРґРЅРѕРјСѓ РЅР° РїРѕС‚РѕРє
+	unsigned long FreeDetectorIdx;													///РЎРїРѕСЃРѕР± СЂР°СЃРїСЂРµРґРµР»РёС‚СЊ РґРµС‚РµРєС‚РѕСЂ РїРѕ РїРѕС‚РѕРєР°Рј
 
 
 public:
-	///Получить объект из выборки по индексу
+	///РџРѕР»СѓС‡РёС‚СЊ РѕР±СЉРµРєС‚ РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 	virtual cv::Mat GetSampleCVMat(const unsigned long sample_idx);
 
 
 	TFacesDataset(const TFacesDatasetProperties &faces_dataset_properties);
 	virtual ~TFacesDataset();
 
-	///Получить объект из выборки по индексу
+	///РџРѕР»СѓС‡РёС‚СЊ РѕР±СЉРµРєС‚ РёР· РІС‹Р±РѕСЂРєРё РїРѕ РёРЅРґРµРєСЃСѓ
 	virtual dlib::matrix<unsigned char> GetSampleDLibMatrix(const unsigned long sample_idx);
 };
 

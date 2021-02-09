@@ -51,9 +51,8 @@ DISABLE_WARNING(4244)
 
 DISABLE_WARNING_POP
 
-
-
 enum class TMxDNNTrainerOptimizer { ADAM, SGD };
+enum class TMxDNNTrainerMode { CLASSIFIER, AUTOENCODER };
 
 struct TMxDNNTrainerProperties {
 	int DatasetImageWidth,
@@ -62,13 +61,15 @@ struct TMxDNNTrainerProperties {
 			NetImageHeight,
 			MaxEpoch,
 			BatchSize,
-			EpochStep;						//Здесь указывается число step итераций(батчей) после которого learning rate уменьшается в factor раз
+			EpochStep;						//Р—РґРµСЃСЊ СѓРєР°Р·С‹РІР°РµС‚СЃСЏ С‡РёСЃР»Рѕ step РёС‚РµСЂР°С†РёР№(Р±Р°С‚С‡РµР№) РїРѕСЃР»Рµ РєРѕС‚РѕСЂРѕРіРѕ learning rate СѓРјРµРЅСЊС€Р°РµС‚СЃСЏ РІ factor СЂР°Р·
 	float StartLearningRate,
 				FinalLearningRate,
 				WeightDecay,
 				Err;
-	std::string ModelFileName;
+	std::string ModelFileName,
+							StateFileName;
 	TMxDNNTrainerOptimizer TrainerOptimizer;
+	TMxDNNTrainerMode TrainerMode;
 };
 
 template <typename DatasetType>
@@ -88,18 +89,22 @@ protected:
 
 	///The following function loads the model parameters.
 	static void LoadModelParameters(
-		const std::string& model_parameters_file,
+		const std::string &model_parameters_file,
 		std::map<std::string, mxnet::cpp::NDArray> &args_map,
 		std::map<std::string, mxnet::cpp::NDArray> &aux_map,
 		mxnet::cpp::Context &context
 	);
 
 	static void SaveModelParameters(
-		const std::string& model_parameters_file,
+		const std::string &model_parameters_file,
 		std::map<std::string, mxnet::cpp::NDArray> &args_map,
 		std::map<std::string, mxnet::cpp::NDArray> &aux_map,
 		mxnet::cpp::Context &context
 	);
+
+	std::list<std::pair<std::string, std::string>> ParseKeyValues(const std::string &s);
+	void InitializeNet();
+	static mxnet::cpp::NDArray ResizeInput(mxnet::cpp::NDArray data, const mxnet::cpp::Shape new_shape, const int dataset_image_width, const int dataset_image_height);
 public:
 	TMxDNNTrainer(
 		TMxDNNTrainerProperties &properties,
@@ -108,153 +113,14 @@ public:
 		mxnet::cpp::Context * context = nullptr
 	);
 
-	void Initialize();
+	void Train();
 
-	static mxnet::cpp::NDArray ResizeInput(mxnet::cpp::NDArray data, const mxnet::cpp::Shape new_shape, const int dataset_image_width, const int dataset_image_height);
-	
-	//void SaveState()
-	//{
-	//	LG << "Epoch: " << epoch << "; " << opt->Serialize();  //!!!Вот так параметры можно достать
-
-	//	SaveModelParameters(
-	//		const std::string & model_parameters_file,
-	//		std::map<std::string, mxnet::cpp::NDArray> & args_map,
-	//		std::map<std::string, mxnet::cpp::NDArray> & aux_map,
-	//		mxnet::cpp::Context & context
-	//	);
-	//}
-
-	//void LoadState()
-	//{
-	//	LoadModelParameters(
-	//		const std::string & model_parameters_file,
-	//		std::map<std::string, mxnet::cpp::NDArray> & args_map,
-	//		std::map<std::string, mxnet::cpp::NDArray> & aux_map,
-	//		mxnet::cpp::Context & context
-	//	);
-	//}
-
-	void Train()
-	{
-		auto logarithm = [](const double a, const double b){ return log(b) / log(a); };		//log b по основанию a
-
-		std::unique_ptr<mxnet::cpp::Optimizer> opt;
-
-		if (Properties.TrainerOptimizer == TMxDNNTrainerOptimizer::SGD)
-		{
-			std::cout<<"optimizer: SGD"<<std::endl;
-			opt = std::unique_ptr<mxnet::cpp::Optimizer>(mxnet::cpp::OptimizerRegistry::Find("sgd"));
-			opt->SetParam("lr", Properties.StartLearningRate)		//!!!Вот так параметры можно установить как достать смотреть ниже
-				->SetParam("wd", Properties.WeightDecay)
-				->SetParam("momentum", 0.99)
-				->SetParam("rescale_grad", std::min(1., 1.0 / Properties.BatchSize))
-				->SetParam("lazy_update", false);
-		}
-
-		if (Properties.TrainerOptimizer == TMxDNNTrainerOptimizer::ADAM)
-		{
-			std::cout << "optimizer: ADAM" << std::endl;
-			opt = std::unique_ptr<mxnet::cpp::Optimizer>(mxnet::cpp::OptimizerRegistry::Find("adam"));
-			opt->SetParam("lr", Properties.StartLearningRate)		//!!!Вот так параметры можно установить как достать смотреть ниже
-				->SetParam("rescale_grad", std::min(1., 1.0 / Properties.BatchSize))
-				->SetParam("beta1", 0.9)
-				->SetParam("beta2", 0.999)
-				->SetParam("epsilon", 1e-8)
-				->SetParam("lazy_update", true);
-		}
-
-		const float factor = 0.1;
-		int step = Properties.EpochStep * Dataset->Size() / Properties.BatchSize;
-		//Здесь указывается число step итераций(батчей) после которого learning rate уменьшается в factor раз
-		std::unique_ptr<mxnet::cpp::LRScheduler> lr_sch(new mxnet::cpp::FactorScheduler(step, factor, Properties.FinalLearningRate));
-		opt->SetLRScheduler(std::move(lr_sch));
-
-		for (auto it : args_map)
-			std::cout << it.first << std::endl;
-		std::cout << std::endl;
-
-		// Create metrics
-		mxnet::cpp::Accuracy	train_acc,
-													val_acc;
-		mxnet::cpp::LogLoss logloss_train,
-												logloss_val;
-
-		//ОСНОВНОЙ ЦИКЛ ОБУЧЕНИЯ
-		std::vector<mx_float> batch_samples;
-		std::vector<mx_float> batch_labels;
-		mxnet::cpp::NDArray unresized_data(data_shape, *Context);
-
-		for (int epoch = 0; epoch < std::min<float>(Properties.MaxEpoch, (logarithm(1./factor, Properties.StartLearningRate) - logarithm(1./factor, Properties.FinalLearningRate) + 1) * Properties.EpochStep); ++epoch)
-		{
-			LG << "Epoch: " << epoch << "; " << opt->Serialize();  //!!!Вот так параметры можно достать
-
-			train_acc.Reset();
-			logloss_train.Reset();
-			int iter = 0;
-
-			for (size_t dit = 0; dit <= Dataset->Size() / Properties.BatchSize; dit++)		//!!!Ну приблизительно эпоха
-			{
-				Dataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.BatchSize, *Context);
-				unresized_data.SyncCopyFromCPU(batch_samples.data(), Properties.BatchSize /** mat.channels()*/ * Properties.NetImageWidth * Properties.NetImageWidth);
-				exec->arg_dict()["label"].SyncCopyFromCPU(batch_labels.data(), Properties.BatchSize);
-				TMxDNNTrainer::ResizeInput(unresized_data, data_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["data"]);
-				mxnet::cpp::NDArray::WaitAll();
-
-				exec->Forward(true);
-				exec->Backward();
-
-				for (size_t i = 0; i < arg_names.size(); ++i)
-				{
-					if (arg_names[i] == "data" || arg_names[i] == "label") continue;
-					opt->Update(i, exec->arg_arrays[i], exec->grad_arrays[i]);
-				}
-				mxnet::cpp::NDArray::WaitAll();
-
-				//std::vector<mx_float> pred_data1(exec->outputs[0].ArgmaxChannel().Size());
-				//std::vector<mx_float> label_data1(batch_size);
-				//exec->arg_dict()["label"].SyncCopyToCPU(&label_data1, batch_size);
-				//exec->outputs[0].ArgmaxChannel().SyncCopyToCPU(&pred_data1, exec->outputs[0].ArgmaxChannel().Size());
-
-				auto output = exec->outputs[0].Copy(*Context);
-				mxnet::cpp::NDArray::WaitAll();
-
-				train_acc.Update(args_map["label"], output);
-				logloss_train.Reset();
-				logloss_train.Update(args_map["label"], output);
-				++iter;
-				LG << "EPOCH: " << epoch << " ITER: " << iter << " Train Accuracy: " << train_acc.Get() << " Train Loss: " << logloss_train.Get();
-			}
-			LG << "EPOCH: " << epoch << " Train Accuracy: " << train_acc.Get();
-
-			TMxDNNTrainer::SaveModelParameters(MODEL_FILENAME, args_map, aux_map, *Context);
-
-
-			if (true)						//!!!Нужно сохранять лог обучения
-			{
-				mxnet::cpp::Accuracy acu;
-				acu.Reset();
-				//!!!Тут переделать по порядку и с паддингом в конце И НА ТЕСТОВЫЙ ДАТАСЕТ
-				for (size_t dit = 0; dit <= Dataset->Size() / Properties.BatchSize / /*!!!!*/ 15; dit++)
-				{
-					Dataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.BatchSize, *Context);
-					unresized_data.SyncCopyFromCPU(batch_samples.data(), Properties.BatchSize /** mat.channels()*/ * Properties.NetImageWidth * Properties.NetImageWidth);
-					exec->arg_dict()["label"].SyncCopyFromCPU(batch_labels.data(), Properties.BatchSize);
-					TMxDNNTrainer::ResizeInput(unresized_data, data_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["data"]);
-					mxnet::cpp::NDArray::WaitAll();
-					exec->Forward(false);
-					auto output = exec->outputs[0].Copy(*Context);
-					mxnet::cpp::NDArray::WaitAll();
-					acu.Update(args_map["label"], output);
-				}
-				LG << "Accuracy: " << acu.Get();
-			}
-
-			if (abs(train_acc.Get() - 1.) < Properties.Err)
-				break;
-		}
-	}
-
+	void InitializeState(std::unique_ptr<mxnet::cpp::Optimizer> &opt);
+	void SaveState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, const int epoch);
+	void LoadState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, int &epoch);
 };
+
+
 
 template <typename DatasetType>
 TMxDNNTrainer<DatasetType> :: TMxDNNTrainer(
@@ -270,7 +136,7 @@ TMxDNNTrainer<DatasetType> :: TMxDNNTrainer(
 	{
 		Context = context;
 	}
-	else { //Создать контекст
+	else { //РЎРѕР·РґР°С‚СЊ РєРѕРЅС‚РµРєСЃС‚
 		_context = std::unique_ptr<mxnet::cpp::Context>(new mxnet::cpp::Context(mxnet::cpp::DeviceType::kCPU, 0));
 		MXSetNumOMPThreads(std::thread::hardware_concurrency());
 		int num_gpu;
@@ -288,12 +154,15 @@ TMxDNNTrainer<DatasetType> :: TMxDNNTrainer(
 }
 
 template <typename DatasetType>
-void TMxDNNTrainer<DatasetType> ::Initialize()
+void TMxDNNTrainer<DatasetType> ::InitializeNet()
 {
 	data_shape = mxnet::cpp::Shape(Properties.BatchSize, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight);
-	label_shape = mxnet::cpp::Shape(Properties.BatchSize);
+	if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
+		label_shape = mxnet::cpp::Shape(Properties.BatchSize);
+	if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
+		label_shape = mxnet::cpp::Shape(Properties.BatchSize, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight);
 
-	//Загрузка весов сети или их начальная инициализация
+	//Р—Р°РіСЂСѓР·РєР° РІРµСЃРѕРІ СЃРµС‚Рё РёР»Рё РёС… РЅР°С‡Р°Р»СЊРЅР°СЏ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
 	if (std::filesystem::exists(Properties.ModelFileName))
 	{
 		std::cout << "Loading net weights from " << Properties.ModelFileName << std::endl;
@@ -301,13 +170,12 @@ void TMxDNNTrainer<DatasetType> ::Initialize()
 		args_map["data"] = mxnet::cpp::NDArray(data_shape, *Context);
 		args_map["label"] = mxnet::cpp::NDArray(label_shape, *Context);
 		Net->InferArgsMap(*Context, &args_map, args_map);
-	}
-	else {
+	}	else {
 		args_map["data"] = mxnet::cpp::NDArray(data_shape, *Context);
 		args_map["label"] = mxnet::cpp::NDArray(label_shape, *Context);
 		Net->InferArgsMap(*Context, &args_map, args_map);
 		std::cout << "Initialize params with xavier" << std::endl;
-		mxnet::cpp::Xavier xavier = mxnet::cpp::Xavier(mxnet::cpp::Xavier::gaussian, mxnet::cpp::Xavier::in, 0.1);
+		mxnet::cpp::Xavier xavier = mxnet::cpp::Xavier(mxnet::cpp::Xavier::gaussian, mxnet::cpp::Xavier::avg, 3.);
 		for (auto& arg : args_map)
 		{
 			xavier(arg.first, &arg.second);
@@ -321,13 +189,250 @@ void TMxDNNTrainer<DatasetType> ::Initialize()
 template <typename DatasetType>
 mxnet::cpp::NDArray TMxDNNTrainer<DatasetType> :: ResizeInput(mxnet::cpp::NDArray data, const mxnet::cpp::Shape new_shape, const int dataset_image_width, const int dataset_image_height)
 {
-	mxnet::cpp::NDArray pic = data.Reshape(mxnet::cpp::Shape(0, 1, dataset_image_width, dataset_image_height));
+	mxnet::cpp::NDArray pic = data.Reshape(mxnet::cpp::Shape(1, 1, dataset_image_width, dataset_image_height));
 	mxnet::cpp::NDArray output;
 	mxnet::cpp::Operator("_contrib_BilinearResize2D")
 		.SetParam("height", new_shape[2])
 		.SetParam("width", new_shape[3])
 		(pic).Invoke(output);
 	return output;
+}
+
+template <typename DatasetType>
+void TMxDNNTrainer<DatasetType> :: Train()
+{
+	auto logarithm = [](const double a, const double b) { return log(b) / log(a); };		//log b РїРѕ РѕСЃРЅРѕРІР°РЅРёСЋ a
+
+	std::unique_ptr<mxnet::cpp::Optimizer> opt;
+	int start_epoch = 0;
+
+	if (!std::filesystem::exists(Properties.StateFileName))
+		InitializeState(opt);
+	else
+		LoadState(opt, start_epoch);
+
+	const float factor = 0.1;
+	int step = Properties.EpochStep * Dataset->Size() / Properties.BatchSize;
+	//Р—РґРµСЃСЊ СѓРєР°Р·С‹РІР°РµС‚СЃСЏ С‡РёСЃР»Рѕ step РёС‚РµСЂР°С†РёР№(Р±Р°С‚С‡РµР№) РїРѕСЃР»Рµ РєРѕС‚РѕСЂРѕРіРѕ learning rate СѓРјРµРЅСЊС€Р°РµС‚СЃСЏ РІ factor СЂР°Р·
+	std::unique_ptr<mxnet::cpp::LRScheduler> lr_sch(new mxnet::cpp::FactorScheduler(step, factor, Properties.FinalLearningRate));
+	opt->SetLRScheduler(std::move(lr_sch));
+	
+	for (auto it : args_map)
+		std::cout << it.first << std::endl;
+	std::cout << std::endl;
+
+	// Create metrics
+	mxnet::cpp::Accuracy	train_acc,
+		val_acc;
+	mxnet::cpp::LogLoss logloss_train,
+		logloss_val;
+	mxnet::cpp::MAE mae;
+	mxnet::cpp::RMSE rmse;
+
+	//РћРЎРќРћР’РќРћР™ Р¦РРљР› РћР‘РЈР§Р•РќРРЇ
+	std::vector<mx_float> batch_samples;
+	std::vector<mx_float> batch_labels;
+	mxnet::cpp::NDArray unresized_data(data_shape, *Context);
+
+	for (int epoch = start_epoch; epoch < std::min<float>(Properties.MaxEpoch, (logarithm(1. / factor, Properties.StartLearningRate) - logarithm(1. / factor, Properties.FinalLearningRate) + 1) * Properties.EpochStep); ++epoch)
+	{
+		LG << "Epoch: " << epoch<< " of "
+			<< std::min<float>(Properties.MaxEpoch, (logarithm(1. / factor, Properties.StartLearningRate) - logarithm(1. / factor, Properties.FinalLearningRate) + 1) * Properties.EpochStep)
+			<< "; " << opt->Serialize();
+
+		train_acc.Reset();
+		int iter = 0;
+
+		for (size_t dit = 0; dit <= Dataset->Size() / Properties.BatchSize; dit++)		//!!!РќСѓ РїСЂРёР±Р»РёР·РёС‚РµР»СЊРЅРѕ СЌРїРѕС…Р°
+		{
+			Dataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.BatchSize, *Context);
+			
+			unresized_data.SyncCopyFromCPU(batch_samples.data(), Properties.BatchSize /** mat.channels()*/ * Properties.NetImageWidth * Properties.NetImageWidth);
+			unresized_data.CopyTo(&args_map["data"]);
+
+			//TMxDNNTrainer::ResizeInput(unresized_data, data_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["data"]);
+			//args_map["data"].SyncCopyFromCPU(batch_samples.data(), data_shape.Size());
+			mxnet::cpp::NDArray::WaitAll();
+
+			if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
+				exec->arg_dict()["label"].SyncCopyFromCPU(batch_labels.data(), label_shape.Size());
+			if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
+			{
+				unresized_data.CopyTo(&args_map["label"]);
+				//TMxDNNTrainer::ResizeInput(unresized_data, label_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["label"]);
+				mxnet::cpp::NDArray::WaitAll();
+			}
+
+			exec->Forward(true);
+			exec->Backward();
+
+			for (size_t i = 0; i < arg_names.size(); ++i)
+			{
+				if (arg_names[i] == "data" || arg_names[i] == "label") continue;
+				opt->Update(i, exec->arg_arrays[i], exec->grad_arrays[i]);
+			}
+			mxnet::cpp::NDArray::WaitAll();
+
+			//Р’С‹РІРѕРґ РѕРґРЅРѕРіРѕ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ РёР· Р±Р°С‚С‡Р°
+			if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
+			{
+				mxnet::cpp::Context context_cpu(mxnet::cpp::DeviceType::kCPU, 0);
+				auto nda = exec->outputs[0].Copy(context_cpu);
+				mxnet::cpp::NDArray::WaitAll();
+				cv::Mat mat = MXNDArrayToCVMat(nda, mxnet::cpp::Shape(1, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight));
+				cv::Mat temp(mat.rows, mat.cols, CV_8U);
+				cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8U);
+				cv::imshow("output", temp);
+				auto nda2 = args_map["label"].Copy(context_cpu);
+				mxnet::cpp::NDArray::WaitAll();
+				mat = MXNDArrayToCVMat(nda2, mxnet::cpp::Shape(1, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight));
+				cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8U);
+				cv::imshow("label", temp);
+				cv::waitKey(1);
+			}
+
+			auto output = exec->outputs[0].Copy(*Context);
+			mxnet::cpp::NDArray::WaitAll();
+			if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
+			{
+				train_acc.Update(args_map["label"], output);
+				logloss_train.Reset();
+				logloss_train.Update(args_map["label"], output);
+				LG << "EPOCH: " << epoch << " ITER: " << iter << " Train Accuracy: " << train_acc.Get() << " Train Loss: " << logloss_train.Get();
+			}
+			if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
+			{
+				mae.Reset();
+				mae.Update(args_map["label"], output);
+				rmse.Reset();
+				rmse.Update(args_map["label"], output);
+				LG << "EPOCH: " << epoch << " ITER: " << iter << " MAE: " << mae.Get() << " RMSE: " << rmse.Get();
+			}
+			++iter;
+		}
+		LG << "EPOCH: " << epoch << " Train Accuracy: " << train_acc.Get();
+
+		//TMxDNNTrainer::SaveModelParameters(Properties.ModelFileName, args_map, aux_map, *Context);
+		SaveState(opt, epoch + 1);
+
+
+		//if (true)						//!!!РќСѓР¶РЅРѕ СЃРѕС…СЂР°РЅСЏС‚СЊ Р»РѕРі РѕР±СѓС‡РµРЅРёСЏ
+		//{
+		//	mxnet::cpp::Accuracy acu;
+		//	acu.Reset();
+		//	//!!!РўСѓС‚ РїРµСЂРµРґРµР»Р°С‚СЊ РїРѕ РїРѕСЂСЏРґРєСѓ Рё СЃ РїР°РґРґРёРЅРіРѕРј РІ РєРѕРЅС†Рµ Р РќРђ РўР•РЎРўРћР’Р«Р™ Р”РђРўРђРЎР•Рў
+		//	for (size_t dit = 0; dit <= Dataset->Size() / Properties.BatchSize / /*!!!!*/ 15; dit++)
+		//	{
+		//		Dataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.BatchSize, *Context);
+		//	
+		//		unresized_data.SyncCopyFromCPU(batch_samples.data(), Properties.BatchSize /** mat.channels()*/ * Properties.NetImageWidth * Properties.NetImageWidth);
+		//		TMxDNNTrainer::ResizeInput(unresized_data, data_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["data"]);
+		//		//args_map["data"].SyncCopyFromCPU(batch_samples.data(), data_shape.Size());
+
+		//		if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
+		//			exec->arg_dict()["label"].SyncCopyFromCPU(batch_labels.data(), label_shape.Size());
+		//		if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
+		//			TMxDNNTrainer::ResizeInput(unresized_data, label_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["label"]);
+
+		//		mxnet::cpp::NDArray::WaitAll();
+		//		exec->Forward(false);
+		//		auto output = exec->outputs[0].Copy(*Context);
+		//		mxnet::cpp::NDArray::WaitAll();
+		//		if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
+		//			acu.Update(args_map["label"], output);
+		//	}
+		//	LG << "Accuracy: " << acu.Get();
+		//}
+
+		if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
+			if (abs(train_acc.Get() - 1.) < Properties.Err)
+				break;
+	}
+}
+
+template <typename DatasetType>
+void TMxDNNTrainer<DatasetType> :: InitializeState(std::unique_ptr<mxnet::cpp::Optimizer> &opt)
+{
+	InitializeNet();
+	std::cout << "Initializing state with trainer properties" << std::endl;
+
+	if (Properties.TrainerOptimizer == TMxDNNTrainerOptimizer::SGD)
+	{
+		std::cout << "optimizer: SGD" << std::endl;
+		opt = std::unique_ptr<mxnet::cpp::Optimizer>(mxnet::cpp::OptimizerRegistry::Find("sgd"));
+		opt->SetParam("lr", Properties.StartLearningRate)		//!!!Р’РѕС‚ С‚Р°Рє РїР°СЂР°РјРµС‚СЂС‹ РјРѕР¶РЅРѕ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РєР°Рє РґРѕСЃС‚Р°С‚СЊ СЃРјРѕС‚СЂРµС‚СЊ РЅРёР¶Рµ
+			->SetParam("wd", Properties.WeightDecay)
+			->SetParam("momentum", 0.99)
+			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.BatchSize))
+			->SetParam("lazy_update", false);
+	}
+
+	if (Properties.TrainerOptimizer == TMxDNNTrainerOptimizer::ADAM)
+	{
+		std::cout << "optimizer: ADAM" << std::endl;
+		opt = std::unique_ptr<mxnet::cpp::Optimizer>(mxnet::cpp::OptimizerRegistry::Find("adam"));
+		opt->SetParam("lr", Properties.StartLearningRate)		//!!!Р’РѕС‚ С‚Р°Рє РїР°СЂР°РјРµС‚СЂС‹ РјРѕР¶РЅРѕ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РєР°Рє РґРѕСЃС‚Р°С‚СЊ СЃРјРѕС‚СЂРµС‚СЊ РЅРёР¶Рµ
+			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.BatchSize))
+			->SetParam("beta1", 0.9)
+			->SetParam("beta2", 0.999)
+			->SetParam("epsilon", 1e-8)
+			->SetParam("lazy_update", true)
+			->SetParam("wd", Properties.WeightDecay);
+	}
+}
+
+template <typename DatasetType>
+void TMxDNNTrainer<DatasetType> :: SaveState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, const int epoch)
+{
+	TMxDNNTrainer::SaveModelParameters(Properties.ModelFileName, args_map, aux_map, *Context);
+
+	std::cout << "Saving state to " << Properties.StateFileName << std::endl;
+
+	LG << "epoch = " << epoch << std::endl << opt->Serialize();
+
+	WriteStringToFile(Properties.StateFileName, "epoch=" + std::to_string(epoch) + "\n" + opt->Serialize());
+}
+
+template <typename DatasetType>
+void TMxDNNTrainer<DatasetType> :: LoadState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, int &epoch)
+{
+	InitializeNet();
+
+	std::cout << "Loading state from " << Properties.StateFileName << std::endl;
+
+	std::string s;
+	if (!ReadStringFromFile(Properties.StateFileName, s))
+		std::runtime_error("TMxDNNTrainer :: LoadState error: can not read file " + Properties.StateFileName);
+
+	LG << s;
+
+	//Р”Р°Р»СЊС€Рµ РёС… РїР°СЂСЃРёС‚СЊ Рё Р·Р°РїРѕР»РЅСЏС‚СЊ Р·РЅР°С‡РµРЅРёСЏ РїР°СЂР°РјРµС‚СЂРѕРІ
+	auto kvl = ParseKeyValues(s);
+
+	for (auto& it : kvl)
+		if (it.first == "opt_type")
+			opt = std::unique_ptr<mxnet::cpp::Optimizer>(mxnet::cpp::OptimizerRegistry::Find(it.second));
+
+	for (auto& it : kvl)
+	{
+		if (it.first == "epoch")
+		{
+			epoch = std::stoi(it.second);
+		}	else {
+			if (it.first != "opt_type")
+			{
+				if (it.second == "true")
+				{
+					opt->SetParam(it.first, true);
+				}	else if (it.second == "false")
+				{
+					opt->SetParam(it.first, false);
+				}	else {
+					opt->SetParam(it.first, std::stof(it.second));
+				}
+			}
+		}
+	}
 }
 
 ///The following function loads the model parameters.
@@ -365,9 +470,9 @@ void TMxDNNTrainer<DatasetType> :: LoadModelParameters(
 template <typename DatasetType>
 void TMxDNNTrainer<DatasetType> :: SaveModelParameters(
 	const std::string& model_parameters_file,
-	std::map<std::string, mxnet::cpp::NDArray>& args_map,
-	std::map<std::string, mxnet::cpp::NDArray>& aux_map,
-	mxnet::cpp::Context& context
+	std::map<std::string, mxnet::cpp::NDArray> &args_map,
+	std::map<std::string, mxnet::cpp::NDArray> &aux_map,
+	mxnet::cpp::Context &context
 ) {
 	LG << "Saving the model parameters to " << model_parameters_file << std::endl;
 	//The whole trained model is just a dictionary of array name to ndarrays.arguments starts with 'arg:' 
@@ -385,4 +490,23 @@ void TMxDNNTrainer<DatasetType> :: SaveModelParameters(
 	}
 	mxnet::cpp::NDArray::WaitAll();
 	mxnet::cpp::NDArray::Save(model_parameters_file, parameters);
+}
+
+template <typename DatasetType>
+std::list<std::pair<std::string, std::string>> TMxDNNTrainer<DatasetType> :: ParseKeyValues(const std::string &s)
+{
+	size_t	pos1 = 0,
+		pos2 = 0;
+	std::pair<std::string, std::string> sp;
+	std::list<std::pair<std::string, std::string>> result;
+	do {
+		pos1 = s.find("=", pos2);
+		if (pos1 == std::string::npos)
+			break;
+		sp.first = s.substr(pos2, pos1 - pos2);
+		pos2 = s.find("\n", pos1 + 1) + 1;
+		sp.second = s.substr(pos1 + 1, pos2 - pos1 - 1 - 1);
+		result.push_back(sp);
+	} while (pos2 != std::string::npos);
+	return result;
 }
