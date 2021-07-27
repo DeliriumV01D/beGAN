@@ -163,8 +163,7 @@ public:
 	void GetRandomSampleBatch(
 		std::vector<mx_float> &batch_samples,
 		std::vector<mx_float> &batch_labels,
-		const size_t batch_size,
-		const mxnet::cpp::Context& context
+		const size_t batch_size
 	);
 	#endif
 

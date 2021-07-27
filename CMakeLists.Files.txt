@@ -9,6 +9,7 @@ set(SOURCES ${SOURCES}
 	src/TData.cpp
 	src/TDataset.cpp
 	src/TFacesDataset.cpp
+	src/model_executor.cpp
 	src/main.cpp
 )
 
@@ -17,9 +18,12 @@ set(HEADERS ${HEADERS}
 	C:/mxnet/bin/include/mxnet-cpp/MxNetCpp.h
 	src/resnet_mx.h
 	src/TMnistDataset.h
+	src/TMxDNNScheduler.h
 	src/TMxDNNTrainer.h
 	src/CommonDefinitions.h
+	src/TMxGANTrainer.h
 	src/TRandomInt.h
+	src/model_executor.h
 	src/TData.h
 	src/TIndexedObjects.h
 	src/TDataset.h

@@ -361,8 +361,7 @@ void TDataset :: GetRandomSampleBatch(
 void TDataset :: GetRandomSampleBatch(
 	std::vector<mx_float> &batch_samples,
 	std::vector<mx_float> &batch_labels,
-	const size_t batch_size,
-	const mxnet::cpp::Context& context
+	const size_t batch_size
 ) {
 	struct TS {
 		TDataset* Dataset;
@@ -388,17 +387,11 @@ void TDataset :: GetRandomSampleBatch(
 					unsigned long label;
 					GetRandomSample(sample, label);
 					cv::resize(sample, sample, DatasetProperties.ImgSize);	//!!!делать resize внутри (перед аугментацией или после)
-					cv::Scalar mean, stddev;
-					cv::meanStdDev(sample, mean, stddev);
+					//cv::Scalar mean, stddev;
+					//cv::meanStdDev(sample, mean, stddev);
 
 					size_t it = i * 1/*mat.channels()*/ * DatasetProperties.ImgSize.height/*rows*/ * DatasetProperties.ImgSize.width/*cols*/;
-					for (int cm = 0; cm < sample.channels(); cm++)
-						for (int im = 0; im < sample.rows; im++)
-							for (int jm = 0; jm < sample.cols; jm++)
-							{
-								batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm])/255 - (float)(mean[cm])/255) / ((float)(stddev[cm])/255);
-								it++;
-							}
+					CVMatToMxFloatArr(sample, &batch_samples[0], cv::Rect(0, 0, 0, 0), it, 1.f / 255);
 					batch_labels[i] = label;
 				}
 			);
@@ -415,17 +408,11 @@ void TDataset :: GetRandomSampleBatch(
 		{
 			GetRandomSample(sample, label);
 			cv::resize(sample, sample, DatasetProperties.ImgSize);		//!!!делать resize внутри (перед аугментацией)
-			cv::Scalar mean, stddev;
-			cv::meanStdDev(sample, mean, stddev);
+			//cv::Scalar mean, stddev;
+			//cv::meanStdDev(sample, mean, stddev);
 
 			size_t it = i * 1/*mat.channels()*/ * DatasetProperties.ImgSize.height/*rows*/ * DatasetProperties.ImgSize.width/*cols*/;
-			for (int cm = 0; cm < sample.channels(); cm++)
-				for (int im = 0; im < sample.rows; im++)
-					for (int jm = 0; jm < sample.cols; jm++)
-					{
-						batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm])/255 - (float)(mean[cm]) / 255) / ((float)(stddev[cm]) / 255);
-						it++;
-					}
+			CVMatToMxFloatArr(sample,	&batch_samples[0], cv::Rect(0, 0, 0, 0), it, 1.f / 255);
 			batch_labels[i] = label;
 		};
 	}

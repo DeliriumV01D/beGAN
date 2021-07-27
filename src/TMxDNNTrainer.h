@@ -6,35 +6,13 @@
 #include <memory>
 #include <thread>
 #include <algorithm>
+#include <unordered_set>
 
 
-#if defined(_MSC_VER)
-#define DISABLE_WARNING_PUSH           __pragma(warning( push ))
-#define DISABLE_WARNING_POP            __pragma(warning( pop )) 
-#define DISABLE_WARNING(warningNumber) __pragma(warning( disable : warningNumber ))
-
-#define DISABLE_WARNING_UNREFERENCED_FORMAL_PARAMETER    DISABLE_WARNING(4100)
-#define DISABLE_WARNING_UNREFERENCED_FUNCTION            DISABLE_WARNING(4505)
-// other warnings you want to deactivate...
-
-#elif defined(__GNUC__) || defined(__clang__)
-#define DO_PRAGMA(X) _Pragma(#X)
-#define DISABLE_WARNING_PUSH           DO_PRAGMA(GCC diagnostic push)
-#define DISABLE_WARNING_POP            DO_PRAGMA(GCC diagnostic pop) 
-#define DISABLE_WARNING(warningName)   DO_PRAGMA(GCC diagnostic ignored #warningName)
-
-#define DISABLE_WARNING_UNREFERENCED_FORMAL_PARAMETER    DISABLE_WARNING(-Wunused-parameter)
-#define DISABLE_WARNING_UNREFERENCED_FUNCTION            DISABLE_WARNING(-Wunused-function)
-// other warnings you want to deactivate... 
-
-#else
-#define DISABLE_WARNING_PUSH
-#define DISABLE_WARNING_POP
-#define DISABLE_WARNING_UNREFERENCED_FORMAL_PARAMETER
-#define DISABLE_WARNING_UNREFERENCED_FUNCTION
-// other warnings you want to deactivate... 
-
-#endif
+#include "TRandomDouble.h"
+#include "CommonDefinitions.h"
+#include "TData.h"
+#include "model_executor.h"
 
 
 DISABLE_WARNING_PUSH
@@ -48,76 +26,117 @@ DISABLE_WARNING(4244)
 
 #include "mxnet-cpp/MxNetCpp.h"
 #include "resnet_mx.h"
+#include "TMxDNNScheduler.h"
+#include "mxnet-cpp/metric.h"
 
 DISABLE_WARNING_POP
 
+
 enum class TMxDNNTrainerOptimizer { ADAM, SGD };
-enum class TMxDNNTrainerMode { CLASSIFIER, AUTOENCODER };
+
+
+inline std::unordered_set<std::string> GetFilteredArgumentSet(const std::vector<std::string> &arguments, const std::string containing)
+{
+	std::unordered_set<std::string> result;
+	for (auto &it : arguments)
+	{
+		if (containing.empty() || it.find(containing) != std::string::npos)
+			result.insert(it);
+	}
+	return result;
+}
+
+inline std::unordered_set<std::string> GetFilteredArgumentSet(const mxnet::cpp::Symbol &symbol, const std::string containing)
+{
+	std::vector<std::string> arguments = symbol.ListArguments();
+	return GetFilteredArgumentSet(arguments, containing);
+}
+
+///Метрики стоит вынести в отдельный модуль
+class NMAE : public mxnet::cpp::EvalMetric {
+public:
+	NMAE() : EvalMetric("nmae") {}
+
+	void Update(mxnet::cpp::NDArray labels, mxnet::cpp::NDArray preds) override 
+	{
+		CheckLabelShapes(labels, preds);
+
+		std::vector<mx_float> pred_data;
+		preds.SyncCopyToCPU(&pred_data);
+		std::vector<mx_float> label_data;
+		labels.SyncCopyToCPU(&label_data);
+
+		size_t len = preds.Size();
+		mx_float sum = 0;
+		for (size_t i = 0; i < len; ++i) 
+		{
+			sum += std::abs(pred_data[i]  - label_data[i]);
+		}
+		sum_metric += sum / len;
+		++num_inst;
+	}
+};
+
 
 struct TMxDNNTrainerProperties {
-	int DatasetImageWidth,
-			DatasetImageHeight,
-			NetImageWidth,
-			NetImageHeight,
+	ModelExecutorProperties ExecutorProperties;
+	int 
 			MaxEpoch,
-			BatchSize,
-			EpochStep;						//Здесь указывается число step итераций(батчей) после которого learning rate уменьшается в factor раз
+			EpochStep,						//Здесь указывается число step итераций(батчей) после которого learning rate уменьшается в factor раз
+			NBatchStatistics,			//Считаем метрики по этому числу батчей
+			TestBatches,					//Количество батчей тестового датасета для тестирования один раз за эпоху
+			OutputInfoTime;				//Периодичность вывода дежурной информации в секундах
 	float StartLearningRate,
 				FinalLearningRate,
 				WeightDecay,
-				Err;
-	std::string ModelFileName,
-							StateFileName;
+				Err;								//abs(1. - Accuracy) for CLASSIFIER, MAE for AUTOENCODER, SEGMENTER
+	std::string StateFileName;
 	TMxDNNTrainerOptimizer TrainerOptimizer;
-	TMxDNNTrainerMode TrainerMode;
 };
 
+
 template <typename DatasetType>
-class TMxDNNTrainer {
+class TMxDNNTrainer : public ModelExecutor {
 protected:
 	TMxDNNTrainerProperties Properties;
-	std::unique_ptr<mxnet::cpp::Context> _context;
-	mxnet::cpp::Context * Context;
-	DatasetType * Dataset;
-	mxnet::cpp::Symbol * Net;
-	std::unique_ptr <mxnet::cpp::Executor> exec;
-	std::vector<std::string> arg_names;
-	mxnet::cpp::Shape data_shape,
-										label_shape;
-	std::map<std::string, mxnet::cpp::NDArray> args_map;
-	std::map<std::string, mxnet::cpp::NDArray> aux_map;
+	DatasetType * TrainDataset,
+							* TestDataset;
+	std::vector<std::string> ArgNames;
+	std::unordered_set<size_t> NonUpdatableArguments;
 
-	///The following function loads the model parameters.
-	static void LoadModelParameters(
-		const std::string &model_parameters_file,
-		std::map<std::string, mxnet::cpp::NDArray> &args_map,
-		std::map<std::string, mxnet::cpp::NDArray> &aux_map,
-		mxnet::cpp::Context &context
-	);
-
-	static void SaveModelParameters(
-		const std::string &model_parameters_file,
-		std::map<std::string, mxnet::cpp::NDArray> &args_map,
-		std::map<std::string, mxnet::cpp::NDArray> &aux_map,
-		mxnet::cpp::Context &context
-	);
-
-	std::list<std::pair<std::string, std::string>> ParseKeyValues(const std::string &s);
-	void InitializeNet();
 	static mxnet::cpp::NDArray ResizeInput(mxnet::cpp::NDArray data, const mxnet::cpp::Shape new_shape, const int dataset_image_width, const int dataset_image_height);
+	virtual void InitializeMetrics(std::unique_ptr<mxnet::cpp::EvalMetric> &metric1, std::unique_ptr<mxnet::cpp::EvalMetric> &metric2);
+	virtual void OutputInfo(
+		mxnet::cpp::EvalMetric * metric1, 
+		mxnet::cpp::EvalMetric * metric2,
+		const int epoch,
+		const int iter,
+		mxnet::cpp::Executor * exec
+	);
+
+	virtual bool TerminationConditions(const std::unique_ptr<mxnet::cpp::EvalMetric> &metric1);
 public:
 	TMxDNNTrainer(
 		TMxDNNTrainerProperties &properties,
-		DatasetType * dataset,
+		DatasetType * train_dataset,
+		DatasetType * test_dataset /* = (Dataset*)nullptr*/,
 		mxnet::cpp::Symbol * net,
 		mxnet::cpp::Context * context = nullptr
 	);
 
-	void Train();
+	virtual ~TMxDNNTrainer(){};
 
-	void InitializeState(std::unique_ptr<mxnet::cpp::Optimizer> &opt);
-	void SaveState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, const int epoch);
-	void LoadState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, int &epoch);
+	virtual void Train();
+
+	void SetNonUpdatableArguments(const std::unordered_set<size_t> &na_arguments)
+	{
+		NonUpdatableArguments = na_arguments;
+	}
+
+	static std::list<std::pair<std::string, std::string>> ParseKeyValues(const std::string& s);
+	virtual void InitializeState(std::unique_ptr<mxnet::cpp::Optimizer> &opt);
+	virtual void SaveState(mxnet::cpp::Optimizer * opt, const int epoch);
+	virtual void LoadState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, int &epoch);
 };
 
 
@@ -125,65 +144,14 @@ public:
 template <typename DatasetType>
 TMxDNNTrainer<DatasetType> :: TMxDNNTrainer(
 	TMxDNNTrainerProperties &properties,
-	DatasetType * dataset,
+	DatasetType * train_dataset,
+	DatasetType * test_dataset /* = (Dataset*)nullptr*/,
 	mxnet::cpp::Symbol * net,
 	mxnet::cpp::Context * context /*= nullptr*/
-) {
+) : ModelExecutor(properties.ExecutorProperties, net, context) {
 	Properties = properties;
-	Dataset = dataset;
-	Net = net;
-	if (context != nullptr)
-	{
-		Context = context;
-	}
-	else { //Создать контекст
-		_context = std::unique_ptr<mxnet::cpp::Context>(new mxnet::cpp::Context(mxnet::cpp::DeviceType::kCPU, 0));
-		MXSetNumOMPThreads(std::thread::hardware_concurrency());
-		int num_gpu;
-		MXGetGPUCount(&num_gpu);
-		int batch_size = Properties.BatchSize;
-#if !MXNET_USE_CPU
-		if (num_gpu > 0)
-		{
-			_context = std::unique_ptr<mxnet::cpp::Context>(new mxnet::cpp::Context(mxnet::cpp::DeviceType::kGPU, 0));
-			batch_size = Properties.BatchSize;
-		}
-#endif
-		Context = _context.get();
-	}
-}
-
-template <typename DatasetType>
-void TMxDNNTrainer<DatasetType> ::InitializeNet()
-{
-	data_shape = mxnet::cpp::Shape(Properties.BatchSize, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight);
-	if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
-		label_shape = mxnet::cpp::Shape(Properties.BatchSize);
-	if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
-		label_shape = mxnet::cpp::Shape(Properties.BatchSize, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight);
-
-	//Загрузка весов сети или их начальная инициализация
-	if (std::filesystem::exists(Properties.ModelFileName))
-	{
-		std::cout << "Loading net weights from " << Properties.ModelFileName << std::endl;
-		TMxDNNTrainer::LoadModelParameters(Properties.ModelFileName, args_map, aux_map, *Context);
-		args_map["data"] = mxnet::cpp::NDArray(data_shape, *Context);
-		args_map["label"] = mxnet::cpp::NDArray(label_shape, *Context);
-		Net->InferArgsMap(*Context, &args_map, args_map);
-	}	else {
-		args_map["data"] = mxnet::cpp::NDArray(data_shape, *Context);
-		args_map["label"] = mxnet::cpp::NDArray(label_shape, *Context);
-		Net->InferArgsMap(*Context, &args_map, args_map);
-		std::cout << "Initialize params with xavier" << std::endl;
-		mxnet::cpp::Xavier xavier = mxnet::cpp::Xavier(mxnet::cpp::Xavier::gaussian, mxnet::cpp::Xavier::avg, 3.);
-		for (auto& arg : args_map)
-		{
-			xavier(arg.first, &arg.second);
-		}
-	}
-
-	exec = std::unique_ptr<mxnet::cpp::Executor>(Net->SimpleBind(*Context, args_map));
-	arg_names = Net->ListArguments();
+	TrainDataset = train_dataset;
+	TestDataset = test_dataset;
 }
 
 template <typename DatasetType>
@@ -199,6 +167,65 @@ mxnet::cpp::NDArray TMxDNNTrainer<DatasetType> :: ResizeInput(mxnet::cpp::NDArra
 }
 
 template <typename DatasetType>
+void TMxDNNTrainer<DatasetType> :: InitializeMetrics(std::unique_ptr<mxnet::cpp::EvalMetric> &metric1, std::unique_ptr<mxnet::cpp::EvalMetric> &metric2)
+{
+	if (Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::CLASSIFIER)
+	{
+		metric1 = std::make_unique<mxnet::cpp::Accuracy>();
+		metric2 = std::make_unique<mxnet::cpp::LogLoss>();
+	}
+	if (Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::AUTOENCODER || Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::SEGMENTER)
+	{
+		metric1 = std::make_unique<mxnet::cpp::MAE>();
+		metric2 = std::make_unique<mxnet::cpp::RMSE>();
+	}
+}
+
+
+
+template <typename DatasetType>
+void TMxDNNTrainer<DatasetType> :: OutputInfo(
+	mxnet::cpp::EvalMetric * metric1, 
+	mxnet::cpp::EvalMetric * metric2,
+	const int epoch,
+	const int iter,
+	mxnet::cpp::Executor * exec
+)
+{
+	//Вывод одного изображения из батча
+	if (Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::AUTOENCODER || Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::SEGMENTER)
+	{
+		bool colorize = Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::SEGMENTER;
+		ShowImageFromBatch("data1", ArgsMap["data"], Properties.ExecutorProperties.NetImageWidth, Properties.ExecutorProperties.NetImageHeight, Properties.ExecutorProperties.NetImageChannels, false);
+		ShowImageFromBatch("label", ArgsMap["label"], Properties.ExecutorProperties.NetImageWidth, Properties.ExecutorProperties.NetImageHeight, Properties.ExecutorProperties.LabelChannels, colorize);
+		ShowImageFromBatch("output", exec->outputs[0], Properties.ExecutorProperties.NetImageWidth, Properties.ExecutorProperties.NetImageHeight, Properties.ExecutorProperties.LabelChannels, colorize);
+		cv::waitKey(1);
+	}
+	if (Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::CLASSIFIER)
+		LG << "EPOCH: " << epoch << " ITER: " << iter << " Train Accuracy: " << metric1->Get() << " Train Loss: " << metric2->Get();
+	if (Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::AUTOENCODER || Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::SEGMENTER)
+		LG << "EPOCH: " << epoch << " ITER: " << iter << " MAE: " << metric1->Get() << " RMSE: " << metric2->Get();
+}
+
+template <typename DatasetType>
+bool TMxDNNTrainer<DatasetType> :: TerminationConditions(const std::unique_ptr<mxnet::cpp::EvalMetric> &metric1)
+{
+	bool result = false;
+
+	if (Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::CLASSIFIER)
+		if (abs(metric1->Get() - 1.) < Properties.Err)		//Accuracy
+			result = true;
+
+	if (Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::AUTOENCODER || Properties.ExecutorProperties.ExecuteMode == DNNExecuteMode::SEGMENTER)
+		if (metric1->Get() < Properties.Err)					//MAE
+			result = true;
+
+	return result;
+}
+
+
+///Обучение
+template <typename DatasetType>
 void TMxDNNTrainer<DatasetType> :: Train()
 {
 	auto logarithm = [](const double a, const double b) { return log(b) / log(a); };		//log b по основанию a
@@ -211,168 +238,125 @@ void TMxDNNTrainer<DatasetType> :: Train()
 	else
 		LoadState(opt, start_epoch);
 
-	const float factor = 0.1;
-	int step = Properties.EpochStep * Dataset->Size() / Properties.BatchSize;
+	const float factor = 0.1f;
+	int step = Properties.EpochStep * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize;
 	//Здесь указывается число step итераций(батчей) после которого learning rate уменьшается в factor раз
-	std::unique_ptr<mxnet::cpp::LRScheduler> lr_sch(new mxnet::cpp::FactorScheduler(step, factor, Properties.FinalLearningRate));
+	std::unique_ptr<TMxDNNScheduler> lr_sch(new TMxDNNScheduler(Properties.StartLearningRate, step, factor, Properties.FinalLearningRate, start_epoch * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize));
 	opt->SetLRScheduler(std::move(lr_sch));
 	
-	for (auto it : args_map)
+	for (auto it : ArgsMap)
 		std::cout << it.first << std::endl;
 	std::cout << std::endl;
 
 	// Create metrics
-	mxnet::cpp::Accuracy	train_acc,
-		val_acc;
-	mxnet::cpp::LogLoss logloss_train,
-		logloss_val;
-	mxnet::cpp::MAE mae;
-	mxnet::cpp::RMSE rmse;
+	std::unique_ptr<mxnet::cpp::EvalMetric> metric1,
+																					metric2;
+	InitializeMetrics(metric1, metric2);
 
 	//ОСНОВНОЙ ЦИКЛ ОБУЧЕНИЯ
 	std::vector<mx_float> batch_samples;
 	std::vector<mx_float> batch_labels;
-	mxnet::cpp::NDArray unresized_data(data_shape, *Context);
-
-	for (int epoch = start_epoch; epoch < std::min<float>(Properties.MaxEpoch, (logarithm(1. / factor, Properties.StartLearningRate) - logarithm(1. / factor, Properties.FinalLearningRate) + 1) * Properties.EpochStep); ++epoch)
+	std::chrono::steady_clock::time_point last_output_info = std::chrono::steady_clock::now();
+	for (int epoch = start_epoch; epoch < std::min<float>((float)Properties.MaxEpoch, (float)(logarithm(1. / factor, Properties.StartLearningRate) - logarithm(1. / factor, Properties.FinalLearningRate) + 1) * Properties.EpochStep); ++epoch)
 	{
 		LG << "Epoch: " << epoch<< " of "
-			<< std::min<float>(Properties.MaxEpoch, (logarithm(1. / factor, Properties.StartLearningRate) - logarithm(1. / factor, Properties.FinalLearningRate) + 1) * Properties.EpochStep)
+			<< std::min<float>((float)Properties.MaxEpoch, (float)(logarithm(1. / factor, Properties.StartLearningRate) - logarithm(1. / factor, Properties.FinalLearningRate) + 1) * Properties.EpochStep)
 			<< "; " << opt->Serialize();
 
-		train_acc.Reset();
 		int iter = 0;
-
-		for (size_t dit = 0; dit <= Dataset->Size() / Properties.BatchSize; dit++)		//!!!Ну приблизительно эпоха
+		for (size_t dit = 0; dit <= TrainDataset->Size() / Properties.ExecutorProperties.BatchSize; dit++)		//!!!Ну приблизительно эпоха
 		{
-			Dataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.BatchSize, *Context);
+			TrainDataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.ExecutorProperties.BatchSize);
+
+			SetArguments(batch_samples, batch_labels);
 			
-			unresized_data.SyncCopyFromCPU(batch_samples.data(), Properties.BatchSize /** mat.channels()*/ * Properties.NetImageWidth * Properties.NetImageWidth);
-			unresized_data.CopyTo(&args_map["data"]);
+			Exec->Forward(true);
+			Exec->Backward();
 
-			//TMxDNNTrainer::ResizeInput(unresized_data, data_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["data"]);
-			//args_map["data"].SyncCopyFromCPU(batch_samples.data(), data_shape.Size());
+			for (size_t i = 0; i < ArgNames.size(); ++i)
+			{
+				if (ArgNames[i] == "data" || ArgNames[i] == "label") 
+					continue;
+				if (NonUpdatableArguments.find(i) == NonUpdatableArguments.end())
+					opt->Update(static_cast<int>(i), Exec->arg_arrays[i], Exec->grad_arrays[i]);
+			}
+
 			mxnet::cpp::NDArray::WaitAll();
 
-			if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
-				exec->arg_dict()["label"].SyncCopyFromCPU(batch_labels.data(), label_shape.Size());
-			if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
-			{
-				unresized_data.CopyTo(&args_map["label"]);
-				//TMxDNNTrainer::ResizeInput(unresized_data, label_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["label"]);
-				mxnet::cpp::NDArray::WaitAll();
-			}
-
-			exec->Forward(true);
-			exec->Backward();
-
-			for (size_t i = 0; i < arg_names.size(); ++i)
-			{
-				if (arg_names[i] == "data" || arg_names[i] == "label") continue;
-				opt->Update(i, exec->arg_arrays[i], exec->grad_arrays[i]);
-			}
+			auto output = Exec->outputs[0].Copy(*Context);
 			mxnet::cpp::NDArray::WaitAll();
 
-			//Вывод одного изображения из батча
-			if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
+			if (dit %  Properties.NBatchStatistics == 0)			//!!!По-хорошему нужно что-то вроде окна
+				metric1->Reset();
+			metric1->Update(ArgsMap["label"], output);
+			if (metric2 != nullptr)
 			{
-				mxnet::cpp::Context context_cpu(mxnet::cpp::DeviceType::kCPU, 0);
-				auto nda = exec->outputs[0].Copy(context_cpu);
-				mxnet::cpp::NDArray::WaitAll();
-				cv::Mat mat = MXNDArrayToCVMat(nda, mxnet::cpp::Shape(1, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight));
-				cv::Mat temp(mat.rows, mat.cols, CV_8U);
-				cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8U);
-				cv::imshow("output", temp);
-				auto nda2 = args_map["label"].Copy(context_cpu);
-				mxnet::cpp::NDArray::WaitAll();
-				mat = MXNDArrayToCVMat(nda2, mxnet::cpp::Shape(1, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight));
-				cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8U);
-				cv::imshow("label", temp);
-				cv::waitKey(1);
+				if (dit %  Properties.NBatchStatistics == 0)			//!!!По-хорошему нужно что-то вроде окна
+					metric2->Reset();
+				metric2->Update(ArgsMap["label"], output);
 			}
 
-			auto output = exec->outputs[0].Copy(*Context);
-			mxnet::cpp::NDArray::WaitAll();
-			if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
+			if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - last_output_info).count() > Properties.OutputInfoTime)
 			{
-				train_acc.Update(args_map["label"], output);
-				logloss_train.Reset();
-				logloss_train.Update(args_map["label"], output);
-				LG << "EPOCH: " << epoch << " ITER: " << iter << " Train Accuracy: " << train_acc.Get() << " Train Loss: " << logloss_train.Get();
+				OutputInfo(metric1.get(), metric2.get(), epoch, iter, Exec.get());
+				last_output_info = std::chrono::steady_clock::now();
 			}
-			if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
-			{
-				mae.Reset();
-				mae.Update(args_map["label"], output);
-				rmse.Reset();
-				rmse.Update(args_map["label"], output);
-				LG << "EPOCH: " << epoch << " ITER: " << iter << " MAE: " << mae.Get() << " RMSE: " << rmse.Get();
-			}
+
 			++iter;
 		}
-		LG << "EPOCH: " << epoch << " Train Accuracy: " << train_acc.Get();
 
-		//TMxDNNTrainer::SaveModelParameters(Properties.ModelFileName, args_map, aux_map, *Context);
-		SaveState(opt, epoch + 1);
+		SaveState(opt.get(), epoch + 1);
 
+		if (TerminationConditions(metric1))
+			break;
 
-		//if (true)						//!!!Нужно сохранять лог обучения
+		//!!!Завести для инференса отдельную сеть, которую подгружать из файлика, чтобы исключить влияние на обучение
+		//if (TestDataset != nullptr)				//!!!Нужно сохранять лог обучения с результатами по тестовому датасету
 		//{
-		//	mxnet::cpp::Accuracy acu;
-		//	acu.Reset();
-		//	//!!!Тут переделать по порядку и с паддингом в конце И НА ТЕСТОВЫЙ ДАТАСЕТ
-		//	for (size_t dit = 0; dit <= Dataset->Size() / Properties.BatchSize / /*!!!!*/ 15; dit++)
+		//	if (metric2 != nullptr) 
+		//		metric2->Reset();
+		//	metric1->Reset();
+		//	size_t test_batches = TestDataset->Size() / Properties.ExecutorProperties.BatchSize;
+		//	if (Properties.TestBatches != 0 && Properties.TestBatches < test_batches)
+		//		test_batches = Properties.TestBatches;
+		//	for (size_t dit = 0; dit <= test_batches; dit++)		//!!!Тут переделать по порядку и с паддингом в конце
 		//	{
-		//		Dataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.BatchSize, *Context);
-		//	
-		//		unresized_data.SyncCopyFromCPU(batch_samples.data(), Properties.BatchSize /** mat.channels()*/ * Properties.NetImageWidth * Properties.NetImageWidth);
-		//		TMxDNNTrainer::ResizeInput(unresized_data, data_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["data"]);
-		//		//args_map["data"].SyncCopyFromCPU(batch_samples.data(), data_shape.Size());
+		//		TestDataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.ExecutorProperties.BatchSize);
+		//		auto output = Execute(batch_samples, std::vector<mx_float>(), false);
 
-		//		if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
-		//			exec->arg_dict()["label"].SyncCopyFromCPU(batch_labels.data(), label_shape.Size());
-		//		if (Properties.TrainerMode == TMxDNNTrainerMode::AUTOENCODER)
-		//			TMxDNNTrainer::ResizeInput(unresized_data, label_shape, Properties.DatasetImageWidth, Properties.DatasetImageHeight).CopyTo(&args_map["label"]);
-
-		//		mxnet::cpp::NDArray::WaitAll();
-		//		exec->Forward(false);
-		//		auto output = exec->outputs[0].Copy(*Context);
-		//		mxnet::cpp::NDArray::WaitAll();
-		//		if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
-		//			acu.Update(args_map["label"], output);
+		//		metric1->Update(args_map["label"], output);
+		//		if (metric2 != nullptr)
+		//			metric2->Update(args_map["label"], output);
 		//	}
-		//	LG << "Accuracy: " << acu.Get();
-		//}
 
-		if (Properties.TrainerMode == TMxDNNTrainerMode::CLASSIFIER)
-			if (abs(train_acc.Get() - 1.) < Properties.Err)
-				break;
-	}
+		//	OutputInfo(metric1.get(), metric2.get(), epoch, iter, Exec.get());
+		//}
+	}			//for epoch
 }
 
 template <typename DatasetType>
 void TMxDNNTrainer<DatasetType> :: InitializeState(std::unique_ptr<mxnet::cpp::Optimizer> &opt)
 {
-	InitializeNet();
-	std::cout << "Initializing state with trainer properties" << std::endl;
+	InitializeNet(/*Exec,*/ArgNames);
+	LG << "Initializing state with trainer properties";
 
 	if (Properties.TrainerOptimizer == TMxDNNTrainerOptimizer::SGD)
 	{
-		std::cout << "optimizer: SGD" << std::endl;
-		opt = std::unique_ptr<mxnet::cpp::Optimizer>(mxnet::cpp::OptimizerRegistry::Find("sgd"));
+		LG << "optimizer: SGD";
+		opt.reset(mxnet::cpp::OptimizerRegistry::Find("sgd"));
 		opt->SetParam("lr", Properties.StartLearningRate)		//!!!Вот так параметры можно установить как достать смотреть ниже
 			->SetParam("wd", Properties.WeightDecay)
 			->SetParam("momentum", 0.99)
-			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.BatchSize))
+			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.ExecutorProperties.BatchSize))
 			->SetParam("lazy_update", false);
 	}
 
 	if (Properties.TrainerOptimizer == TMxDNNTrainerOptimizer::ADAM)
 	{
-		std::cout << "optimizer: ADAM" << std::endl;
-		opt = std::unique_ptr<mxnet::cpp::Optimizer>(mxnet::cpp::OptimizerRegistry::Find("adam"));
+		LG << "optimizer: ADAM";
+		opt.reset(mxnet::cpp::OptimizerRegistry::Find("adam"));
 		opt->SetParam("lr", Properties.StartLearningRate)		//!!!Вот так параметры можно установить как достать смотреть ниже
-			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.BatchSize))
+			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.ExecutorProperties.BatchSize))
 			->SetParam("beta1", 0.9)
 			->SetParam("beta2", 0.999)
 			->SetParam("epsilon", 1e-8)
@@ -382,11 +366,11 @@ void TMxDNNTrainer<DatasetType> :: InitializeState(std::unique_ptr<mxnet::cpp::O
 }
 
 template <typename DatasetType>
-void TMxDNNTrainer<DatasetType> :: SaveState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, const int epoch)
+void TMxDNNTrainer<DatasetType> :: SaveState(mxnet::cpp::Optimizer * opt, const int epoch)
 {
-	TMxDNNTrainer::SaveModelParameters(Properties.ModelFileName, args_map, aux_map, *Context);
+	TMxDNNTrainer::SaveModelParameters(Properties.ExecutorProperties.ModelFileName, ArgsMap, ArgGradStore, GradReqType, AuxMap, *Context);
 
-	std::cout << "Saving state to " << Properties.StateFileName << std::endl;
+	LG << "Saving state to " << Properties.StateFileName;
 
 	LG << "epoch = " << epoch << std::endl << opt->Serialize();
 
@@ -396,9 +380,9 @@ void TMxDNNTrainer<DatasetType> :: SaveState(std::unique_ptr<mxnet::cpp::Optimiz
 template <typename DatasetType>
 void TMxDNNTrainer<DatasetType> :: LoadState(std::unique_ptr<mxnet::cpp::Optimizer> &opt, int &epoch)
 {
-	InitializeNet();
+	InitializeNet(/*Exec,*/ ArgNames);
 
-	std::cout << "Loading state from " << Properties.StateFileName << std::endl;
+	LG << "Loading state from " << Properties.StateFileName;
 
 	std::string s;
 	if (!ReadStringFromFile(Properties.StateFileName, s))
@@ -411,8 +395,7 @@ void TMxDNNTrainer<DatasetType> :: LoadState(std::unique_ptr<mxnet::cpp::Optimiz
 
 	for (auto& it : kvl)
 		if (it.first == "opt_type")
-			opt = std::unique_ptr<mxnet::cpp::Optimizer>(mxnet::cpp::OptimizerRegistry::Find(it.second));
-
+			opt.reset(mxnet::cpp::OptimizerRegistry::Find(it.second));
 	for (auto& it : kvl)
 	{
 		if (it.first == "epoch")
@@ -428,68 +411,11 @@ void TMxDNNTrainer<DatasetType> :: LoadState(std::unique_ptr<mxnet::cpp::Optimiz
 				{
 					opt->SetParam(it.first, false);
 				}	else {
-					opt->SetParam(it.first, std::stof(it.second));
+					opt->SetParam(it.first, it.second/*std::stof(it.second)*/);
 				}
 			}
 		}
 	}
-}
-
-///The following function loads the model parameters.
-template <typename DatasetType>
-void TMxDNNTrainer<DatasetType> :: LoadModelParameters(
-	const std::string& model_parameters_file,
-	std::map<std::string, mxnet::cpp::NDArray>& args_map,
-	std::map<std::string, mxnet::cpp::NDArray>& aux_map,
-	mxnet::cpp::Context& context
-) {
-	if (!std::filesystem::exists(model_parameters_file))
-	{
-		LG << "Parameter file " << model_parameters_file << " does not exist";
-		throw std::runtime_error("Model parameters does not exist");
-	}
-	LG << "Loading the model parameters from " << model_parameters_file << std::endl;
-	std::map<std::string, mxnet::cpp::NDArray> parameters;
-	mxnet::cpp::NDArray::Load(model_parameters_file, 0, &parameters);
-	for (const auto& it : parameters)
-	{
-		if (it.first.substr(0, 4) == "aux:")
-		{
-			std::string name = it.first.substr(4, it.first.size() - 4);
-			aux_map[name] = it.second.Copy(context);
-		}
-		if (it.first.substr(0, 4) == "arg:")
-		{
-			std::string name = it.first.substr(4, it.first.size() - 4);
-			args_map[name] = it.second.Copy(context);
-		}
-	}
-	mxnet::cpp::NDArray::WaitAll();
-}
-
-template <typename DatasetType>
-void TMxDNNTrainer<DatasetType> :: SaveModelParameters(
-	const std::string& model_parameters_file,
-	std::map<std::string, mxnet::cpp::NDArray> &args_map,
-	std::map<std::string, mxnet::cpp::NDArray> &aux_map,
-	mxnet::cpp::Context &context
-) {
-	LG << "Saving the model parameters to " << model_parameters_file << std::endl;
-	//The whole trained model is just a dictionary of array name to ndarrays.arguments starts with 'arg:' 
-	//and auxiliary states starts with 'aux:'
-	std::map<std::string, mxnet::cpp::NDArray> parameters;
-
-	for (auto& it : args_map)
-	{
-		parameters[std::string("arg:") + it.first] = it.second.Copy(context);
-	}
-
-	for (auto& it : aux_map)
-	{
-		parameters[std::string("aux:") + it.first] = it.second.Copy(context);
-	}
-	mxnet::cpp::NDArray::WaitAll();
-	mxnet::cpp::NDArray::Save(model_parameters_file, parameters);
 }
 
 template <typename DatasetType>

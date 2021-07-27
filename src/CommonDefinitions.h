@@ -115,10 +115,10 @@ inline QPixmap cvMatToQPixmap(const cv::Mat &mat)
 inline void rotateImage(const cv::Mat &in, cv::Mat &out, const double &angle)
 {
   // get rotation matrix for rotating the image around its center
-  cv::Point2f center(in.cols/2.0, in.rows/2.0);
+  cv::Point2f center(in.cols/2.0f, in.rows/2.0f);
   cv::Mat rot = cv::getRotationMatrix2D(center, angle, 1.0);
   // determine bounding rectangle
-  cv::Rect bbox = cv::RotatedRect(center, in.size(), angle).boundingRect();
+  cv::Rect bbox = cv::RotatedRect(center, in.size(), (float)angle).boundingRect();
   // adjust transformation matrix
   rot.at<double>(0,2) += bbox.width/2.0 - center.x;
   rot.at<double>(1,2) += bbox.height/2.0 - center.y;
@@ -175,62 +175,150 @@ static void CVMatToDlibMatrix8U(const cv::Mat &mat, dlib::matrix<unsigned char> 
 	dlib::assign_image(dlib_matrix, dlib::cv_image<unsigned char>(temp));
 }
 
+inline cv::Mat Colorize(const cv::Mat& img)
+{
+	const std::array<cv::Vec3b, 4> colors =
+	{
+		cv::Vec3b(107, 107, 165),			//ground #a56b6b
+		cv::Vec3b(245, 61, 184),			//structure #b83df5
+		cv::Vec3b(64, 117, 35),				//forest #237540
+		cv::Vec3b(231, 180, 49)				//water #31b4e7
+	};
+
+	cv::Mat result = cv::Mat(img.rows, img.cols, CV_8UC3);
+	for (int i = 0; i < img.size().area(); i++)
+	{
+		int c;
+		if (img.depth() == CV_8U)
+			c = static_cast<int>(img.at<uchar>(i));
+		if (img.depth() == CV_32F)
+			c = static_cast<int>(round(img.at<float>(i)));
+		if (c < 0 || c >= colors.size())
+			result.at<cv::Vec3b>(i) = cv::Vec3b(0, 0, 0);
+		else
+			result.at<cv::Vec3b>(i) = colors[c];
+	}
+	return result;
+}
+
+inline cv::Mat Unfold(const cv::Mat& mat, const int channels)
+{
+	cv::Mat unfolded(mat.size(), CV_8UC(channels));
+	//bk_mask.copyTo(mask, (man_mask >= 0 && man_mask < 1));
+	for (int im = 0; im < mat.rows; im++)
+		for (int jm = 0; jm < mat.cols; jm++)
+		{
+			for (int cm = 0; cm < channels; cm++)
+				unfolded.data[(im * mat.cols + jm) * unfolded.channels() + cm] = 0;
+
+			uchar uc = mat.at<uchar>(im, jm);
+			if (uc >= 0 && uc < channels)
+				unfolded.data[(im * mat.cols + jm) * unfolded.channels() + uc] = 1;
+
+			//*((float*)&unfolded_label.data[((im * label.cols + jm) * unfolded_label.channels() + uc)*sizeof(float)]) = 1.f;
+		}
+	return unfolded;
+}
+
+///input image must be a multichannel float mat CV_32FC(shape[1])
+inline cv::Mat Fold(const cv::Mat& mat)
+{
+	cv::Mat result(mat.size(), CV_32FC1);
+
+	for (int im = 0; im < mat.rows; im++)
+		for (int jm = 0; jm < mat.cols; jm++)
+		{
+			//auto v = mat.at<cv::Vec<float, mat.channels>>(im, jm);
+			result.at<float>(im, jm) = 0.f;
+			for (int cm = 0; cm < mat.channels(); cm++)
+				if (*((float*)&mat.data[((im * mat.cols + jm) * mat.channels() + cm) * mat.elemSize1()]) > 0.5)
+				{
+					result.at<float>(im, jm) = static_cast<float>(cm);
+				}
+		}
+	return result;
+}
+
 #ifdef USE_MXNET
 
-//convert cv::Mat to mxnet::cpp::NDArray format
-//!!!Передевать NDArray параметром, если его размеры удовлетворяют, то не производить выделения памяти
-//!!!Если порядок совпадает, то memcpy
-static mxnet::cpp::NDArray CVMatToMXNDArray(const cv::Mat &mat, const mxnet::cpp::Context &context)
-{
-	//if (nd_array.GetShape() )
-	mxnet::cpp::NDArray nd_array(mxnet::cpp::Shape(1, mat.channels(), mat.cols, mat.rows), context, false);
-	std::vector<mx_float> data;
-	data.reserve(1 * mat.channels() * mat.rows * mat.cols);
+inline void CVMatToMxFloatArr(
+	const cv::Mat &mat,											//отсюда
+	mx_float * data,												//сюда без проверки границ
+	cv::Rect roi = cv::Rect(0, 0, 0, 0),		//Из какой части изображения берем
+	size_t its = 0,													//В какую часть массива пихаем
+	const float multiplier = 1.f / 255
+) {
+	if (roi.width == 0 && roi.height == 0)
+		roi = cv::Rect(0, 0, mat.cols, mat.rows);
 
-	for (int c = 0; c < mat.channels(); c++)
-		for (int i = 0; i < mat.rows; i++) 
-			for (int j = 0; j < mat.cols; j++) 
+	//добавить очередной i-й кусочек входного изображения на its-ое место в батч
+	for (int cm = 0; cm < mat.channels(); cm++)
+		for (int im = 0; im < roi.height; im++)
+			for (int jm = 0; jm < roi.width; jm++)
 			{
-				data.emplace_back(static_cast<mx_float>(mat.data[(i * mat.cols + j) * mat.channels() + c]));
+				uchar* p = &mat.data[(((im + roi.y) * mat.cols + jm + roi.x) * mat.channels() + cm) * mat.elemSize1()];
+				if (mat.depth() == CV_8U)
+					data[its] = static_cast<mx_float>((*((uchar*)p)) * multiplier);
+				if (mat.depth() == CV_32F)
+					data[its] = static_cast<mx_float>((*((float*)p)) * multiplier);
+				its++;
 			}
-
-	nd_array.SyncCopyFromCPU(data.data(), 1 * mat.channels() * mat.rows * mat.cols);
-	mxnet::cpp::NDArray::WaitAll();
-	return nd_array;
 }
+
+inline void MxFloatArrToCVMat(
+	const mx_float * data,									//отсюда без проверки границ
+	cv::Mat &mat,														//сюда
+	size_t its = 0,													//Из какой части массива берем
+	cv::Rect roi = cv::Rect(0, 0, 0, 0),		//В какую часть изображения помещаем
+	const float multiplier = 255.f
+) {
+	if (roi.width == 0 && roi.height == 0)
+		roi = cv::Rect(0, 0, mat.cols, mat.rows);
+
+	for (int cm = 0; cm < mat.channels(); cm++)
+		for (int im = 0; im < roi.height; im++)
+			for (int jm = 0; jm < roi.width; jm++)
+			{
+				if (mat.depth() == CV_8U)
+					/**((unsigned char*)&*/mat.data[(((im + roi.y) * mat.cols + jm + roi.x) * mat.channels() + cm) * sizeof(unsigned char)] = static_cast<unsigned char>(data[its] * multiplier);
+				if (mat.depth() == CV_32F)
+					*((float*)&mat.data[(((im + roi.y) * mat.cols + jm + roi.x) * mat.channels() + cm) * sizeof(float)]) = static_cast<float>(data[its] * multiplier);
+				its++;
+			}
+}
+
+////convert cv::Mat to mxnet::cpp::NDArray format
+////!!!Передевать NDArray параметром, если его размеры удовлетворяют, то не производить выделения памяти
+////!!!Если порядок совпадает, то memcpy
+//static mxnet::cpp::NDArray CVMatToMXNDArray(const cv::Mat &mat, const mxnet::cpp::Context &context)
+//{
+//	//if (nd_array.GetShape() )
+//	mxnet::cpp::NDArray nd_array(mxnet::cpp::Shape(1, mat.channels(), mat.cols, mat.rows), context, false);
+//	std::vector<mx_float> data;
+//	data.reserve(1 * mat.channels() * mat.rows * mat.cols);
+//
+//	for (int c = 0; c < mat.channels(); c++)
+//		for (int i = 0; i < mat.rows; i++) 
+//			for (int j = 0; j < mat.cols; j++) 
+//			{
+//				data.emplace_back(static_cast<mx_float>(mat.data[(i * mat.cols + j) * mat.channels() + c]));
+//			}
+//
+//	nd_array.SyncCopyFromCPU(data.data(), 1 * mat.channels() * mat.rows * mat.cols);
+//	mxnet::cpp::NDArray::WaitAll();
+//	return nd_array;
+//}
 
 
 ///nd_array should already be not in GPU 
-///result image type can be float 1 channel CV_32FC1 or float 3 channel CV_32FC3
+///result image type can be multichannel float mat CV_32FC(shape[1])
 static cv::Mat MXNDArrayToCVMat(const mxnet::cpp::NDArray nd_array, mxnet::cpp::Shape shape = mxnet::cpp::Shape()/*, const mxnet::cpp::Context &context*/)
 {
-	//data_shape = mxnet::cpp::Shape(Properties.BatchSize, 1, Properties.DatasetImageWidth, Properties.DatasetImageHeight);
-	//label_shape = mxnet::cpp::Shape(Properties.BatchSize);
-	
 	if (shape == mxnet::cpp::Shape())
 		shape = nd_array.GetShape();
-
-	const mx_float * data = nd_array.GetData();
-
-	int img_type;
-	if (shape[1] == 1)
-		img_type = CV_32FC1;
-	else if (shape[1] == 3)
-		img_type = CV_32FC3;
-	else
-		std::runtime_error("MXNDArrayToCVMat error: the number of channels of the image is expected to be 1 or 3");
-
-	cv::Mat result(shape[3], shape[2], img_type);
-
-	int k = 0;
-	for (int c = 0; c < result.channels(); c++)
-		for (int i = 0; i < result.rows; i++)
-			for (int j = 0; j < result.cols; j++)
-			{
-				*((float*)&(result.data[((i * result.cols + j) * result.channels() + c)*sizeof(float)])) = data[k];
-				//result.data[k] = data[(i * result.rows + j) * result.channels() + c];
-				k++;
-			}
+	const mx_float* data = nd_array.GetData();
+	cv::Mat result(shape[3], shape[2], CV_32FC(shape[1]));
+	MxFloatArrToCVMat(data, result, 0, cv::Rect(0, 0, 0, 0), 1.f);
 	return result;
 }
 
@@ -257,6 +345,39 @@ static cv::Mat MXNDArrayToCVMat(const mxnet::cpp::NDArray nd_array, mxnet::cpp::
 //std::cout << mat.cols << " " << mat.rows << std::endl;
 //cv::Mat temp(mat.rows, mat.cols, CV_8U);
 //cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8U);
+
+
+///Вывод одного изображения из батча
+inline void ShowImageFromBatch(
+	const std::string &win_name,
+	const mxnet::cpp::NDArray &batch,
+	const unsigned int width,
+	const unsigned int height,
+	const unsigned int channels,
+	const bool colorize = true
+){
+	mxnet::cpp::Context context_cpu(mxnet::cpp::DeviceType::kCPU, 0);
+	auto nda = batch.Copy(context_cpu);
+	mxnet::cpp::NDArray::WaitAll();
+	cv::Mat mat = MXNDArrayToCVMat(nda, mxnet::cpp::Shape(1, channels, width, height));
+	cv::Mat temp;
+	if (channels == 1)
+	{
+		if (!colorize)
+		{
+			temp = cv::Mat(mat.rows, mat.cols, CV_8U);
+			cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8U);
+		}
+		else {
+			temp = Colorize(mat);
+		}
+	}
+	else {
+		temp = cv::Mat(mat.rows, mat.cols, CV_8UC3);
+		cv::normalize(mat, temp, 0, 255, cv::NORM_MINMAX, CV_8UC3);
+	}
+	cv::imshow(win_name, temp);
+}
 
 #endif //USE_MXNET
 

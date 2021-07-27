@@ -46,7 +46,8 @@ DISABLE_WARNING_POP
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/imgproc/types_c.h>
 
-#include <TRandomInt.h>
+#include "TRandomInt.h"
+#include "CommonDefinitions.h"
 
 struct TMNISTDatasetProperties
 {
@@ -116,8 +117,7 @@ public:
 	void GetRandomSampleBatch(
 		std::vector<mx_float> &batch_samples,
 		std::vector<mx_float> &batch_labels,
-		const size_t batch_size,
-		const mxnet::cpp::Context &context
+		const size_t batch_size
 	) {
 		size_t samples_size = batch_size * 1/*mat.channels()*/ * DatasetProperties.ImgSize.height/*rows*/ * DatasetProperties.ImgSize.width/*cols*/,
 			labels_size = batch_size;
@@ -134,17 +134,11 @@ public:
 		{
 			GetSample(sample, label);
 			cv::resize(sample, sample, DatasetProperties.ImgSize);		//!!!делать resize внутри (перед аугментацией)
-			cv::Scalar mean, stddev;
-			meanStdDev(sample, mean, stddev);
+			//cv::Scalar mean, stddev;
+			//meanStdDev(sample, mean, stddev);
 
 			size_t it = i * 1/*mat.channels()*/ * DatasetProperties.ImgSize.height/*rows*/ * DatasetProperties.ImgSize.width/*cols*/;
-			for (int cm = 0; cm < sample.channels(); cm++)
-				for (int im = 0; im < sample.rows; im++)
-					for (int jm = 0; jm < sample.cols; jm++)
-					{
-						batch_samples[it] = (static_cast<float>(sample.data[(im * sample.rows + jm) * sample.channels() + cm]) / 255 - (float)(mean[cm]) / 255) / ((float)(stddev[cm]) / 255);
-						it++;
-					}
+			CVMatToMxFloatArr(sample, &batch_samples[0], cv::Rect(0, 0, 0, 0), it, 1.f / 255);
 			batch_labels[i] = (mx_float)label;
 		}
 	}
