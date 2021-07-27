@@ -2,8 +2,8 @@
 #include "TMxDNNTrainer.h"
 
 
-///Обязательно все слои дискриминатора должны содержать в названии discriminator_
-///Обязательно все слои генератора должны содержать в названии generator_
+///РћР±СЏР·Р°С‚РµР»СЊРЅРѕ РІСЃРµ СЃР»РѕРё РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂР° РґРѕР»Р¶РЅС‹ СЃРѕРґРµСЂР¶Р°С‚СЊ РІ РЅР°Р·РІР°РЅРёРё discriminator_
+///РћР±СЏР·Р°С‚РµР»СЊРЅРѕ РІСЃРµ СЃР»РѕРё РіРµРЅРµСЂР°С‚РѕСЂР° РґРѕР»Р¶РЅС‹ СЃРѕРґРµСЂР¶Р°С‚СЊ РІ РЅР°Р·РІР°РЅРёРё generator_
 template <typename DatasetType>
 class TMxGANTrainer {
 protected:
@@ -15,7 +15,7 @@ protected:
 	std::vector<std::string>	GenArgNames,
 		DiscrArgNames,
 		GANArgNames;
-	//Определяет обучаем сейчас генератор(1)(фиксируем дискриминатор) или обучаем дискриминатор(0)(фиксируем генератор)
+	//РћРїСЂРµРґРµР»СЏРµС‚ РѕР±СѓС‡Р°РµРј СЃРµР№С‡Р°СЃ РіРµРЅРµСЂР°С‚РѕСЂ(1)(С„РёРєСЃРёСЂСѓРµРј РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂ) РёР»Рё РѕР±СѓС‡Р°РµРј РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂ(0)(С„РёРєСЃРёСЂСѓРµРј РіРµРЅРµСЂР°С‚РѕСЂ)
 	bool GanPhase;
 
 	TMxDNNTrainerProperties Properties;
@@ -62,8 +62,8 @@ TMxGANTrainer <DatasetType> :: TMxGANTrainer(
 	GanPhase = false;
 	Properties = properties;
 
-	//Здесь разобраться с размерностью входов и выходов Executor'ов
-	//Все входы должны называться одинаково - data и все выходы одинаково - label
+	//Р—РґРµСЃСЊ СЂР°Р·РѕР±СЂР°С‚СЊСЃСЏ СЃ СЂР°Р·РјРµСЂРЅРѕСЃС‚СЊСЋ РІС…РѕРґРѕРІ Рё РІС‹С…РѕРґРѕРІ Executor'РѕРІ
+	//Р’СЃРµ РІС…РѕРґС‹ РґРѕР»Р¶РЅС‹ РЅР°Р·С‹РІР°С‚СЊСЃСЏ РѕРґРёРЅР°РєРѕРІРѕ - data Рё РІСЃРµ РІС‹С…РѕРґС‹ РѕРґРёРЅР°РєРѕРІРѕ - label
 
 	//Generator
 	ModelExecutorProperties gen_exec_properties = Properties.ExecutorProperties;
@@ -95,7 +95,7 @@ void TMxGANTrainer <DatasetType> :: InitializeMetrics(std::unique_ptr<mxnet::cpp
 template <typename DatasetType>
 void TMxGANTrainer <DatasetType> :: Train()
 {
-	auto logarithm = [](const double a, const double b) { return log(b) / log(a); };		//log b по основанию a
+	auto logarithm = [](const double a, const double b) { return log(b) / log(a); };		//log b РїРѕ РѕСЃРЅРѕРІР°РЅРёСЋ a
 
 	std::unique_ptr<mxnet::cpp::Optimizer>	discr_opt,
 		gan_opt;
@@ -109,7 +109,7 @@ void TMxGANTrainer <DatasetType> :: Train()
 
 	const float factor = 0.1f;
 	int step = Properties.EpochStep * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize;
-	//Здесь указывается число step итераций(батчей) после которого learning rate уменьшается в factor раз
+	//Р—РґРµСЃСЊ СѓРєР°Р·С‹РІР°РµС‚СЃСЏ С‡РёСЃР»Рѕ step РёС‚РµСЂР°С†РёР№(Р±Р°С‚С‡РµР№) РїРѕСЃР»Рµ РєРѕС‚РѕСЂРѕРіРѕ learning rate СѓРјРµРЅСЊС€Р°РµС‚СЃСЏ РІ factor СЂР°Р·
 	std::unique_ptr<TMxDNNScheduler> discr_lr_sch(new TMxDNNScheduler(Properties.StartLearningRate, step, factor, Properties.FinalLearningRate, start_epoch * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize));
 	discr_opt->SetLRScheduler(std::move(discr_lr_sch));
 	std::unique_ptr<TMxDNNScheduler> gan_lr_sch(new TMxDNNScheduler(Properties.StartLearningRate, step, factor, Properties.FinalLearningRate, start_epoch * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize));
@@ -124,7 +124,7 @@ void TMxGANTrainer <DatasetType> :: Train()
 		                                      metric2;
 	InitializeMetrics(metric1, metric2);
 
-	//ОСНОВНОЙ ЦИКЛ ОБУЧЕНИЯ
+	//РћРЎРќРћР’РќРћР™ Р¦РРљР› РћР‘РЈР§Р•РќРРЇ
 	std::vector<mx_float> batch_samples(Properties.ExecutorProperties.BatchSize * Properties.ExecutorProperties.NetImageChannels * Properties.ExecutorProperties.NetImageWidth * Properties.ExecutorProperties.NetImageHeight);
 	std::vector<mx_float> batch_labels(Properties.ExecutorProperties.BatchSize);
 	mxnet::cpp::NDArray output;
@@ -135,9 +135,9 @@ void TMxGANTrainer <DatasetType> :: Train()
 			<< "; " << discr_opt->Serialize() << std::endl << gan_opt->Serialize() << std::endl;
 
 		int iter = 0;
-		//Зафиксировать веса генератора. Поочередно подавать на вход дискриминатора выход генератора и изображение из датасета. Обучать до тех пор пока различение не улучшится.
-		//Зафиксировать веса дискриминатора. Подавать на вход дискриминатора только выход генератора. Обучать до тех пор пока генератор не станет чаще успешно обманывать дискриминатор.
-		bool mode; //Определяет берем изображения батча из датасета(true) или из генератора(false)
+		//Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РІРµСЃР° РіРµРЅРµСЂР°С‚РѕСЂР°. РџРѕРѕС‡РµСЂРµРґРЅРѕ РїРѕРґР°РІР°С‚СЊ РЅР° РІС…РѕРґ РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂР° РІС‹С…РѕРґ РіРµРЅРµСЂР°С‚РѕСЂР° Рё РёР·РѕР±СЂР°Р¶РµРЅРёРµ РёР· РґР°С‚Р°СЃРµС‚Р°. РћР±СѓС‡Р°С‚СЊ РґРѕ С‚РµС… РїРѕСЂ РїРѕРєР° СЂР°Р·Р»РёС‡РµРЅРёРµ РЅРµ СѓР»СѓС‡С€РёС‚СЃСЏ.
+		//Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РІРµСЃР° РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂР°. РџРѕРґР°РІР°С‚СЊ РЅР° РІС…РѕРґ РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂР° С‚РѕР»СЊРєРѕ РІС‹С…РѕРґ РіРµРЅРµСЂР°С‚РѕСЂР°. РћР±СѓС‡Р°С‚СЊ РґРѕ С‚РµС… РїРѕСЂ РїРѕРєР° РіРµРЅРµСЂР°С‚РѕСЂ РЅРµ СЃС‚Р°РЅРµС‚ С‡Р°С‰Рµ СѓСЃРїРµС€РЅРѕ РѕР±РјР°РЅС‹РІР°С‚СЊ РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂ.
+		bool mode; //РћРїСЂРµРґРµР»СЏРµС‚ Р±РµСЂРµРј РёР·РѕР±СЂР°Р¶РµРЅРёСЏ Р±Р°С‚С‡Р° РёР· РґР°С‚Р°СЃРµС‚Р°(true) РёР»Рё РёР· РіРµРЅРµСЂР°С‚РѕСЂР°(false)
 		std::vector<mx_float> gan_rand(Properties.ExecutorProperties.CodeVectorLength * Properties.ExecutorProperties.BatchSize);
 
 		if (epoch == 0)
@@ -168,33 +168,33 @@ void TMxGANTrainer <DatasetType> :: Train()
 		//long as G changes slowly enough.This strategy is analogous to the way that SML / PCD[31, 29]
 		//training maintains samples from a Markov chain from one learning step to the next in order to avoid
 		//burning in a Markov chain as part of the inner loop of learning
-		for (size_t dit = 0; dit <= (GanPhase == true) * 25 + (GanPhase == false) * 50/*(GanPhase == true) * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize + (GanPhase == false) * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize*/; dit++)		//!!!Ну приблизительно эпоха
+		for (size_t dit = 0; dit <= (GanPhase == true) * 25 + (GanPhase == false) * 50/*(GanPhase == true) * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize + (GanPhase == false) * TrainDataset->Size() / Properties.ExecutorProperties.BatchSize*/; dit++)		//!!!РќСѓ РїСЂРёР±Р»РёР·РёС‚РµР»СЊРЅРѕ СЌРїРѕС…Р°
 		{
 			if (GanPhase == false)
 				mode = (dit % 2) == 1;
 			else
 				mode = false;
 
-			if (GanPhase == false)			//обучаем дискриминатор
+			if (GanPhase == false)			//РѕР±СѓС‡Р°РµРј РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂ
 			{
-				//В зависимости от mode заполняем data батча из датасета(true) или из генератора(false)
+				//Р’ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕС‚ mode Р·Р°РїРѕР»РЅСЏРµРј data Р±Р°С‚С‡Р° РёР· РґР°С‚Р°СЃРµС‚Р°(true) РёР»Рё РёР· РіРµРЅРµСЂР°С‚РѕСЂР°(false)
 				if (mode == true)
 				{
 					TrainDataset->GetRandomSampleBatch(batch_samples, batch_labels, Properties.ExecutorProperties.BatchSize);
-					//!!!DiscriminatorExec->SetArguments(samples, labels); см ниже
+					//!!!DiscriminatorExec->SetArguments(samples, labels); СЃРј РЅРёР¶Рµ
 				}	else {
 					for (int l = 0; l < gan_rand.size(); l++)
-						gan_rand[l] = static_cast<mx_float>(RandomDouble() /** 2 - 1*/);		///Привести к диапазону [-1, 1]
+						gan_rand[l] = static_cast<mx_float>(RandomDouble() /** 2 - 1*/);		///РџСЂРёРІРµСЃС‚Рё Рє РґРёР°РїР°Р·РѕРЅСѓ [-1, 1]
 					mxnet::cpp::NDArray generated = GeneratorExec->Execute(gan_rand, std::vector<mx_float>(), true/*false*/);
 
 					ShowImageFromBatch("gen", generated, Properties.ExecutorProperties.NetImageWidth, Properties.ExecutorProperties.NetImageHeight, 1, false);
 					cv::waitKey(1);
 
-					//generated(уже на cpu) -> batch_samples
+					//generated(СѓР¶Рµ РЅР° cpu) -> batch_samples
 					memcpy(&batch_samples[0], generated.GetData(), generated.Size() * sizeof(mx_float));
 				}
 
-				//Вместо меток класса даем признак настоящее изображение или поддельное
+				//Р’РјРµСЃС‚Рѕ РјРµС‚РѕРє РєР»Р°СЃСЃР° РґР°РµРј РїСЂРёР·РЅР°Рє РЅР°СЃС‚РѕСЏС‰РµРµ РёР·РѕР±СЂР°Р¶РµРЅРёРµ РёР»Рё РїРѕРґРґРµР»СЊРЅРѕРµ
 				for (int l = 0; l < batch_labels.size(); l++)
 				{
 					batch_labels[l] = mode ? 1 : 0;
@@ -204,7 +204,7 @@ void TMxGANTrainer <DatasetType> :: Train()
 					//	batch_labels[l] = 0.9f + RandomDouble() * 0.1; //label smoothing to make the discriminator training more robust 
 				}
 
-				//output = DiscriminatorExec->Execute(batch_samples, batch_labels, true); - нет Backward!
+				//output = DiscriminatorExec->Execute(batch_samples, batch_labels, true); - РЅРµС‚ Backward!
 				DiscriminatorExec->SetArguments(batch_samples, batch_labels);
 				DiscriminatorExec->GetExecutor()->Forward(true);
 				DiscriminatorExec->GetExecutor()->Backward();
@@ -238,17 +238,17 @@ void TMxGANTrainer <DatasetType> :: Train()
 					//metric2->Reset();
 					metric2->Update(DiscriminatorExec->GetExecutor()->arg_dict()["label"], output);
 				}
-			}		else {						//обучаем генератор	/////////////////////////////////////////////////////////////////////////////
+			}		else {						//РѕР±СѓС‡Р°РµРј РіРµРЅРµСЂР°С‚РѕСЂ	/////////////////////////////////////////////////////////////////////////////
 
 				for (int l = 0; l < gan_rand.size(); l++)
-					gan_rand[l] = static_cast<mx_float>(RandomDouble() /** 2 - 1*/);		///Привести к диапазону [-1, 1]
+					gan_rand[l] = static_cast<mx_float>(RandomDouble() /** 2 - 1*/);		///РџСЂРёРІРµСЃС‚Рё Рє РґРёР°РїР°Р·РѕРЅСѓ [-1, 1]
 
-				//Вместо меток класса даем признак настоящее изображение или поддельное
-				//(gan_mode == 0)		//используем только выход генератора
+				//Р’РјРµСЃС‚Рѕ РјРµС‚РѕРє РєР»Р°СЃСЃР° РґР°РµРј РїСЂРёР·РЅР°Рє РЅР°СЃС‚РѕСЏС‰РµРµ РёР·РѕР±СЂР°Р¶РµРЅРёРµ РёР»Рё РїРѕРґРґРµР»СЊРЅРѕРµ
+				//(gan_mode == 0)		//РёСЃРїРѕР»СЊР·СѓРµРј С‚РѕР»СЊРєРѕ РІС‹С…РѕРґ РіРµРЅРµСЂР°С‚РѕСЂР°
 				for (int l = 0; l < batch_labels.size(); l++)
 					batch_labels[l] = mode ? 1 : 0;
 
-				//output = GANExec->Execute(gan_rand, batch_labels, true); - нет backward
+				//output = GANExec->Execute(gan_rand, batch_labels, true); - РЅРµС‚ backward
 				GANExec->SetArguments(gan_rand, batch_labels);
 				GANExec->GetExecutor()->Forward(true);
 				GANExec->GetExecutor()->Backward();
@@ -279,28 +279,28 @@ void TMxGANTrainer <DatasetType> :: Train()
 					//metric2->Reset();
 					metric2->Update(GANExec->GetExecutor()->arg_dict()["label"], output);
 				}
-			}  //(GanPhase == true)			//обучаем дискриминатор/генератор
+			}  //(GanPhase == true)			//РѕР±СѓС‡Р°РµРј РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂ/РіРµРЅРµСЂР°С‚РѕСЂ
 
 			LG << "EPOCH: " << epoch << " ITER: " << iter << " Train Accuracy: " << metric1->Get() << " Train Loss: " << metric2->Get() << "; gen " << mode;
 
 			++iter;
 		}
 
-		if (GanPhase == false)			//обучаем дискриминатор
+		if (GanPhase == false)			//РѕР±СѓС‡Р°РµРј РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂ
 		{
-			//передать новые веса дискриминатора в GAN
+			//РїРµСЂРµРґР°С‚СЊ РЅРѕРІС‹Рµ РІРµСЃР° РґРёСЃРєСЂРёРјРёРЅР°С‚РѕСЂР° РІ GAN
 			GANExec->InitializeNet(GANArgNames, DiscriminatorExec.get());
-		} else {										// обучаем генератор
-			//передать новые веса из GAN в Generator
+		} else {										// РѕР±СѓС‡Р°РµРј РіРµРЅРµСЂР°С‚РѕСЂ
+			//РїРµСЂРµРґР°С‚СЊ РЅРѕРІС‹Рµ РІРµСЃР° РёР· GAN РІ Generator
 			GeneratorExec->InitializeNet(GenArgNames, GANExec.get());
 
-			//Сохранить состояние
+			//РЎРѕС…СЂР°РЅРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ
 			SaveState(discr_opt.get(), gan_opt.get(), epoch + 1);
 		}
 
-		///!!!Вывод статистики по тестовому датасету и сохранение лога обучения
+		///!!!Р’С‹РІРѕРґ СЃС‚Р°С‚РёСЃС‚РёРєРё РїРѕ С‚РµСЃС‚РѕРІРѕРјСѓ РґР°С‚Р°СЃРµС‚Сѓ Рё СЃРѕС…СЂР°РЅРµРЅРёРµ Р»РѕРіР° РѕР±СѓС‡РµРЅРёСЏ
 
-		///!!!Достижение заданной точности
+		///!!!Р”РѕСЃС‚РёР¶РµРЅРёРµ Р·Р°РґР°РЅРЅРѕР№ С‚РѕС‡РЅРѕСЃС‚Рё
 		//if (TerminationConditions(metric1))
 		//	break;
 	}
@@ -314,13 +314,13 @@ void TMxGANTrainer <DatasetType> :: InitializeState(
 	//
 	GANExec->InitializeNet(GANArgNames);
 
-	////!!!Переделать этот костыль!!! Если загружать только веса генератора, то тоже в gan а оттуда скопируется в gen
+	////!!!РџРµСЂРµРґРµР»Р°С‚СЊ СЌС‚РѕС‚ РєРѕСЃС‚С‹Р»СЊ!!! Р•СЃР»Рё Р·Р°РіСЂСѓР¶Р°С‚СЊ С‚РѕР»СЊРєРѕ РІРµСЃР° РіРµРЅРµСЂР°С‚РѕСЂР°, С‚Рѕ С‚РѕР¶Рµ РІ gan Р° РѕС‚С‚СѓРґР° СЃРєРѕРїРёСЂСѓРµС‚СЃСЏ РІ gen
 	//std::string temp = GANExec->ExecutorProperties.ModelFileName;
 	//GANExec->ExecutorProperties.ModelFileName = "resnet.dat";
 	//GANExec->InitializeNet(GenArgNames);
 	//GANExec->ExecutorProperties.ModelFileName = temp;
 	
-	//Копирование весов данного списка слоев из одной сетки в другую
+	//РљРѕРїРёСЂРѕРІР°РЅРёРµ РІРµСЃРѕРІ РґР°РЅРЅРѕРіРѕ СЃРїРёСЃРєР° СЃР»РѕРµРІ РёР· РѕРґРЅРѕР№ СЃРµС‚РєРё РІ РґСЂСѓРіСѓСЋ
 	GeneratorExec->InitializeNet(GenArgNames, GANExec.get());
 	DiscriminatorExec->InitializeNet(DiscrArgNames, GANExec.get());
 
@@ -330,13 +330,13 @@ void TMxGANTrainer <DatasetType> :: InitializeState(
 	{
 		LG << "optimizer: SGD";
 		discr_opt.reset(mxnet::cpp::OptimizerRegistry::Find("sgd"));
-		discr_opt->SetParam("lr", Properties.StartLearningRate)		//!!!Вот так параметры можно установить как достать смотреть ниже
+		discr_opt->SetParam("lr", Properties.StartLearningRate)		//!!!Р’РѕС‚ С‚Р°Рє РїР°СЂР°РјРµС‚СЂС‹ РјРѕР¶РЅРѕ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РєР°Рє РґРѕСЃС‚Р°С‚СЊ СЃРјРѕС‚СЂРµС‚СЊ РЅРёР¶Рµ
 			->SetParam("wd", Properties.WeightDecay)
 			->SetParam("momentum", 0.99)
 			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.ExecutorProperties.BatchSize))
 			->SetParam("lazy_update", false);
 		gan_opt.reset(mxnet::cpp::OptimizerRegistry::Find("sgd"));
-		gan_opt->SetParam("lr", Properties.StartLearningRate)		//!!!Вот так параметры можно установить как достать смотреть ниже
+		gan_opt->SetParam("lr", Properties.StartLearningRate)		//!!!Р’РѕС‚ С‚Р°Рє РїР°СЂР°РјРµС‚СЂС‹ РјРѕР¶РЅРѕ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РєР°Рє РґРѕСЃС‚Р°С‚СЊ СЃРјРѕС‚СЂРµС‚СЊ РЅРёР¶Рµ
 			->SetParam("wd", Properties.WeightDecay)
 			->SetParam("momentum", 0.99)
 			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.ExecutorProperties.BatchSize))
@@ -347,7 +347,7 @@ void TMxGANTrainer <DatasetType> :: InitializeState(
 	{
 		LG << "optimizer: ADAM";
 		discr_opt.reset(mxnet::cpp::OptimizerRegistry::Find("adam"));
-		discr_opt->SetParam("lr", Properties.StartLearningRate)		//!!!Вот так параметры можно установить как достать смотреть ниже
+		discr_opt->SetParam("lr", Properties.StartLearningRate)		//!!!Р’РѕС‚ С‚Р°Рє РїР°СЂР°РјРµС‚СЂС‹ РјРѕР¶РЅРѕ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РєР°Рє РґРѕСЃС‚Р°С‚СЊ СЃРјРѕС‚СЂРµС‚СЊ РЅРёР¶Рµ
 			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.ExecutorProperties.BatchSize))
 			->SetParam("beta1", 0.9)
 			->SetParam("beta2", 0.999)
@@ -355,7 +355,7 @@ void TMxGANTrainer <DatasetType> :: InitializeState(
 			->SetParam("lazy_update", false)
 			->SetParam("wd", Properties.WeightDecay);
 		gan_opt.reset(mxnet::cpp::OptimizerRegistry::Find("adam"));
-		gan_opt->SetParam("lr", Properties.StartLearningRate)		//!!!Вот так параметры можно установить как достать смотреть ниже
+		gan_opt->SetParam("lr", Properties.StartLearningRate)		//!!!Р’РѕС‚ С‚Р°Рє РїР°СЂР°РјРµС‚СЂС‹ РјРѕР¶РЅРѕ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РєР°Рє РґРѕСЃС‚Р°С‚СЊ СЃРјРѕС‚СЂРµС‚СЊ РЅРёР¶Рµ
 			->SetParam("rescale_grad", std::min(1., 1.0 / Properties.ExecutorProperties.BatchSize))
 			->SetParam("beta1", 0.9)
 			->SetParam("beta2", 0.999)
@@ -389,7 +389,7 @@ void TMxGANTrainer<DatasetType> :: LoadState(
 	GANExec->InitializeNet(GANArgNames);
 	LG << "Loading GAN state from " << Properties.StateFileName;
 
-	//Копирование весов данного списка слоев из одной сетки в другую
+	//РљРѕРїРёСЂРѕРІР°РЅРёРµ РІРµСЃРѕРІ РґР°РЅРЅРѕРіРѕ СЃРїРёСЃРєР° СЃР»РѕРµРІ РёР· РѕРґРЅРѕР№ СЃРµС‚РєРё РІ РґСЂСѓРіСѓСЋ
 	GeneratorExec->InitializeNet(GenArgNames, GANExec.get());
 	DiscriminatorExec->InitializeNet(DiscrArgNames, GANExec.get());
 
@@ -399,7 +399,7 @@ void TMxGANTrainer<DatasetType> :: LoadState(
 
 	LG << s;
 
-	//Дальше их парсить и заполнять значения параметров
+	//Р”Р°Р»СЊС€Рµ РёС… РїР°СЂСЃРёС‚СЊ Рё Р·Р°РїРѕР»РЅСЏС‚СЊ Р·РЅР°С‡РµРЅРёСЏ РїР°СЂР°РјРµС‚СЂРѕРІ
 	auto kvl = TMxDNNTrainer<DatasetType> ::ParseKeyValues(s);
 
 	for (auto& it : kvl)
@@ -434,7 +434,7 @@ void TMxGANTrainer<DatasetType> :: LoadState(
 
 	LG << s;
 
-	//Дальше их парсить и заполнять значения параметров
+	//Р”Р°Р»СЊС€Рµ РёС… РїР°СЂСЃРёС‚СЊ Рё Р·Р°РїРѕР»РЅСЏС‚СЊ Р·РЅР°С‡РµРЅРёСЏ РїР°СЂР°РјРµС‚СЂРѕРІ
 	kvl = TMxDNNTrainer<DatasetType> ::ParseKeyValues(s);
 
 	for (auto& it : kvl)

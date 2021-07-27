@@ -8,7 +8,7 @@ ModelExecutor :: ModelExecutor(const ModelExecutorProperties &properties, mxnet:
 	if (context != nullptr)
 	{
 		Context = context;
-	}	else { //Создать контекст
+	}	else { //РЎРѕР·РґР°С‚СЊ РєРѕРЅС‚РµРєСЃС‚
 		Context = new mxnet::cpp::Context(mxnet::cpp::DeviceType::kCPU, 0);
 		MXSetNumOMPThreads(std::thread::hardware_concurrency());
 		int num_gpu = 0;
@@ -25,7 +25,7 @@ ModelExecutor :: ModelExecutor(const ModelExecutorProperties &properties, mxnet:
 	}
 }
 
-///Загрузка весов сети или их начальная инициализация или копирование из другого экзекьютора
+///Р—Р°РіСЂСѓР·РєР° РІРµСЃРѕРІ СЃРµС‚Рё РёР»Рё РёС… РЅР°С‡Р°Р»СЊРЅР°СЏ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РёР»Рё РєРѕРїРёСЂРѕРІР°РЅРёРµ РёР· РґСЂСѓРіРѕРіРѕ СЌРєР·РµРєСЊСЋС‚РѕСЂР°
 void ModelExecutor :: InitializeNet(std::vector<std::string> &arg_names, ModelExecutor * exec /*= nullptr*/)
 {
 	data_shape = mxnet::cpp::Shape(ExecutorProperties.BatchSize, ExecutorProperties.NetImageChannels, ExecutorProperties.NetImageWidth, ExecutorProperties.NetImageHeight);
@@ -54,7 +54,7 @@ void ModelExecutor :: InitializeNet(std::vector<std::string> &arg_names, ModelEx
 	{
 		LG << "Copying net weights from another net";
 
-		//Копирование весов из сети другого экзекьютора
+		//РљРѕРїРёСЂРѕРІР°РЅРёРµ РІРµСЃРѕРІ РёР· СЃРµС‚Рё РґСЂСѓРіРѕРіРѕ СЌРєР·РµРєСЊСЋС‚РѕСЂР°
 		Net->InferArgsMap(*Context, &ArgsMap, ArgsMap/*known_args*/);
 		auto am = exec->GetArgsMap();
 
@@ -72,13 +72,13 @@ void ModelExecutor :: InitializeNet(std::vector<std::string> &arg_names, ModelEx
 			}
 			mxnet::cpp::NDArray::WaitAll();
 		}
-		////!!!сбросить градиенты
+		////!!!СЃР±СЂРѕСЃРёС‚СЊ РіСЂР°РґРёРµРЅС‚С‹
 		//for (auto &it : ArgGradStore)
 		//{
 		//	mxnet::cpp::NDArray::SampleUniform(0, 0, &it.second);			
 		//}		
 	} else {
-		//Загрузка весов сети или их начальная инициализация
+		//Р—Р°РіСЂСѓР·РєР° РІРµСЃРѕРІ СЃРµС‚Рё РёР»Рё РёС… РЅР°С‡Р°Р»СЊРЅР°СЏ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
 		if (std::filesystem::exists(ExecutorProperties.ModelFileName))
 		{
 			LG << "Loading net weights from " << ExecutorProperties.ModelFileName;
@@ -101,7 +101,7 @@ void ModelExecutor :: InitializeNet(std::vector<std::string> &arg_names, ModelEx
 	//Exec = std::unique_ptr<mxnet::cpp::Executor>(Net->SimpleBind(*Context, ArgsMap));
 	Exec = std::unique_ptr<mxnet::cpp::Executor>(Net->SimpleBind(*Context, ArgsMap, ArgGradStore, GradReqType/*std::map<std::string, mxnet::cpp::OpReqType>()*/, AuxMap));
 
-	arg_names = Net->ListArguments();		//Нужно для последующей фильтрации, хотя это можно делать и на месте, но тогда этот параметр нужно исключить
+	arg_names = Net->ListArguments();		//РќСѓР¶РЅРѕ РґР»СЏ РїРѕСЃР»РµРґСѓСЋС‰РµР№ С„РёР»СЊС‚СЂР°С†РёРё, С…РѕС‚СЏ СЌС‚Рѕ РјРѕР¶РЅРѕ РґРµР»Р°С‚СЊ Рё РЅР° РјРµСЃС‚Рµ, РЅРѕ С‚РѕРіРґР° СЌС‚РѕС‚ РїР°СЂР°РјРµС‚СЂ РЅСѓР¶РЅРѕ РёСЃРєР»СЋС‡РёС‚СЊ
 }
 
 
@@ -134,7 +134,7 @@ mxnet::cpp::NDArray ModelExecutor :: Execute(
 ){
 	mxnet::cpp::NDArray result;
 	SetArguments(batch_samples, batch_labels);
-	Exec->Forward(is_train);		//!!!Пришлось оставить этот параметр true так как иначе ничего не работает возможно бага моей версии mxnet
+	Exec->Forward(is_train);		//!!!РџСЂРёС€Р»РѕСЃСЊ РѕСЃС‚Р°РІРёС‚СЊ СЌС‚РѕС‚ РїР°СЂР°РјРµС‚СЂ true С‚Р°Рє РєР°Рє РёРЅР°С‡Рµ РЅРёС‡РµРіРѕ РЅРµ СЂР°Р±РѕС‚Р°РµС‚ РІРѕР·РјРѕР¶РЅРѕ Р±Р°РіР° РјРѕРµР№ РІРµСЂСЃРёРё mxnet
 
 	//if (output_context == nullptr)
 	//	result = Exec->outputs[0].Copy(*Context);

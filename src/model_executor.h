@@ -51,12 +51,12 @@ protected:
 	std::map<std::string, mxnet::cpp::NDArray> AuxMap;
 
 public:
-	//!!!Вернуть в protected
+	//!!!Р’РµСЂРЅСѓС‚СЊ РІ protected
 	ModelExecutorProperties ExecutorProperties;
 
 	ModelExecutor(const ModelExecutorProperties &properties, mxnet::cpp::Symbol * net, 	mxnet::cpp::Context * context = nullptr);
 	virtual ~ModelExecutor(){};
-	///Загрузка весов сети или их начальная инициализация
+	///Р—Р°РіСЂСѓР·РєР° РІРµСЃРѕРІ СЃРµС‚Рё РёР»Рё РёС… РЅР°С‡Р°Р»СЊРЅР°СЏ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
 	virtual void InitializeNet(std::vector<std::string> &arg_names, ModelExecutor * exec = nullptr);
 	
 	virtual void SetArguments(const std::vector<mx_float> &batch_samples, const std::vector<mx_float> &batch_labels = std::vector<mx_float>());
